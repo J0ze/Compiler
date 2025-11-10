@@ -24,6 +24,8 @@ function myTest() {
     10: c
     };
     let arr = [1, a, obj, []];
+    let anonFn = function(x, y) { return x + y; };
+    let namedFn = function myInnerFn(x) { return x; };
     let fn1 = a => a + 1;
     let fn2 = (a, b) => a + b;
     let fn3 = () => { return 42; };

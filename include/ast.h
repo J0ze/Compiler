@@ -30,6 +30,7 @@ typedef enum {
     NODE_PROPERTY,
     NODE_ARRAY_EXPRESSION,
     NODE_ARROW_FUNCTION_EXPRESSION,
+    NODE_FUNCTION_EXPRESSION,
     NODE_EXPRESSION_STATEMENT,
     NODE_RETURN_STATEMENT,
     NODE_FUNCTION_DECLARATION,
@@ -217,6 +218,13 @@ typedef struct ASTNode {
             bool expression; // 'true' for '() => a', 'false' for '() => { ... }'
         } arrow_func_expr;
 
+        // NODE_FUNCTION_EXPRESSION ( function [name](...) { ... } )
+        struct {
+            struct ASTNode *id;     // 标识符 (函数名), 可以为 NULL
+            NodeList *params;       // 参数列表
+            struct ASTNode *body;   // 函数体 (BlockStatement)
+        } func_expr;
+
         // NODE_EXPRESSION_STATEMENT
         struct {
             struct ASTNode *expression;
@@ -299,6 +307,7 @@ ASTNode* create_object_expression(NodeList *properties);
 ASTNode* create_property(ASTNode *key, ASTNode *value);
 ASTNode* create_array_expression(NodeList *elements);
 ASTNode* create_arrow_function_expression(NodeList *params, ASTNode *body, bool expression);
+ASTNode* create_function_expression(ASTNode *id, NodeList *params, ASTNode *body);
 ASTNode* create_expression_statement(ASTNode *expression);
 ASTNode* create_return_statement(ASTNode *argument);
 ASTNode* create_function_declaration(ASTNode *id, NodeList *params, ASTNode *body);

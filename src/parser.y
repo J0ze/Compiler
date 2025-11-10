@@ -94,6 +94,7 @@ int yylex(void)
 %type <list> arrow_parameter_list
 %type <list> identifier_list // 辅助规则
 %type <node> arrow_body
+%type <node> function_expression
 %type <node> switch_statement
 %type <list> switch_case_list
 %type <node> switch_case
@@ -402,6 +403,16 @@ identifier_list:
     }
 ;
 
+function_expression:
+    // 案例 1: 匿名函数 function (...) { ... }
+    FUNCTION arguments block_statement
+    { $$ = create_function_expression(NULL, $2, $3); }
+
+    // 案例 2: 命名函数 function foo(...) { ... }
+|   FUNCTION IDENTIFIER arguments block_statement
+    { $$ = create_function_expression(create_identifier_node($2), $3, $4); }
+;
+
 /* --- 表达式 (来自 3.3 节) --- */
 expression:
     assignment_expression
@@ -631,6 +642,8 @@ primary_expression:
         bool is_expression_body = ($5->type != NODE_BLOCK_STATEMENT);
         $$ = create_arrow_function_expression($2, $5, is_expression_body);
     }
+|   function_expression
+    { $$ = $1; }
 ;
 
 object_expression:

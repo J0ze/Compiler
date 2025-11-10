@@ -195,6 +195,14 @@ ASTNode* create_arrow_function_expression(NodeList *params, ASTNode *body, bool 
     return node;
 }
 
+ASTNode* create_function_expression(ASTNode *id, NodeList *params, ASTNode *body) {
+    ASTNode *node = create_base_node(NODE_FUNCTION_EXPRESSION);
+    node->data.func_expr.id = id;
+    node->data.func_expr.params = params;
+    node->data.func_expr.body = body;
+    return node;
+}
+
 ASTNode* create_expression_statement(ASTNode *expression) {
     ASTNode *node = create_base_node(NODE_EXPRESSION_STATEMENT);
     node->data.expr_stmt.expression = expression;
@@ -376,6 +384,11 @@ void free_ast(ASTNode *node) {
         case NODE_ARROW_FUNCTION_EXPRESSION:
             nodelist_free(node->data.arrow_func_expr.params);
             free_ast(node->data.arrow_func_expr.body);
+            break;
+        case NODE_FUNCTION_EXPRESSION:
+            free_ast(node->data.func_expr.id); // free_ast 会处理 NULL
+            nodelist_free(node->data.func_expr.params);
+            free_ast(node->data.func_expr.body);
             break;
         case NODE_EXPRESSION_STATEMENT:
             free_ast(node->data.expr_stmt.expression);
@@ -624,6 +637,15 @@ void print_ast(ASTNode *node, int indent) {
             nodelist_print(node->data.arrow_func_expr.params, indent + 2);
             print_indent(indent + 1); printf("body:\n");
             print_ast(node->data.arrow_func_expr.body, indent + 2);
+            break;
+        case NODE_FUNCTION_EXPRESSION:
+            printf("FunctionExpression\n");
+            print_indent(indent + 1); printf("id:\n");
+            print_ast(node->data.func_expr.id, indent + 2); // id 为 NULL 时会打印 (null)
+            print_indent(indent + 1); printf("params:\n");
+            nodelist_print(node->data.func_expr.params, indent + 2);
+            print_indent(indent + 1); printf("body:\n");
+            print_ast(node->data.func_expr.body, indent + 2);
             break;
         case NODE_WHILE_STATEMENT:
             printf("WhileStatement\n");
