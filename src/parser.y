@@ -90,6 +90,10 @@ int yylex(void)
 %type <node> property_name
 %type <node> array_expression
 %type <list> element_list
+%type <node> arrow_function_expression
+%type <list> arrow_parameter_list
+%type <list> identifier_list // 辅助规则
+%type <node> arrow_body
 %type <node> switch_statement
 %type <list> switch_case_list
 %type <node> switch_case
@@ -139,11 +143,13 @@ statement_list:
     { 
         $$ = nodelist_create(); 
         nodelist_append($$, $1); 
+        extern Scanner *scanner; scanner->line_terminator_seen = false; // <-- 在此重置
     }
 |   statement_list statement 
     { 
-        nodelist_append($1, $2); // $1 是 NodeList*, $2 是新语句
+        nodelist_append($1, $2); 
         $$ = $1; 
+        extern Scanner *scanner; scanner->line_terminator_seen = false; // <-- 在此重置
     }
 ;
 
@@ -182,10 +188,10 @@ block_statement:
 /* ASI 规则的实现 (来自 3.4 和 4.3 节) */
 optional_semicolon:
     SEMICOLON
+    { extern Scanner *scanner; scanner->line_terminator_seen = false; } // <-- 在此重置
 | /* empty */ 
     {
-        extern Scanner *scanner; // <-- 添加这一行
-        
+        extern Scanner *scanner;
         if (!can_insert_semicolon(scanner)) {
             yyerror("missing semicolon");
             YYERROR;
@@ -375,9 +381,10 @@ expression:
 assignment_expression:
     conditional_expression
     { $$ = $1; }
-| left_hand_side_expression ASSIGN assignment_expression
+|   arrow_function_expression // <-- 在这里添加
+    { $$ = $1; }
+|   left_hand_side_expression ASSIGN assignment_expression
     { $$ = create_assignment_expr(OP_ASSIGN, $1, $3); }
-/* ... 其他赋值表达式 ... */
 ;
 
 conditional_expression:
@@ -651,6 +658,59 @@ element_list:
 |   element_list COMMA assignment_expression
     {
         nodelist_append($1, $3);
+        $$ = $1;
+    }
+;
+
+//arrowfunction表达式相关代码
+arrow_function_expression:
+    // 案例 1: 单个参数，无括号
+    // a => a + 1
+    IDENTIFIER ARROW arrow_body
+    {
+        NodeList *params = nodelist_create();
+        nodelist_append(params, create_identifier_node($1));
+        bool is_expression_body = ($3->type != NODE_BLOCK_STATEMENT);
+        $$ = create_arrow_function_expression(params, $3, is_expression_body);
+    }
+
+    // 案例 2 & 3: 带括号的参数
+    // () => ... 或 (a, b) => ...
+|   LPAREN arrow_parameter_list RPAREN ARROW arrow_body
+    {
+        bool is_expression_body = ($5->type != NODE_BLOCK_STATEMENT);
+        $$ = create_arrow_function_expression($2, $5, is_expression_body);
+    }
+;
+
+// arrow_body 匹配函数体
+arrow_body:
+    // () => { ... }
+    block_statement
+    { $$ = $1; }
+    // () => a + 1
+|   assignment_expression
+    { $$ = $1; }
+;
+
+// arrow_parameter_list 匹配括号内的参数列表
+arrow_parameter_list:
+    /* empty */
+    { $$ = nodelist_create(); }
+|   identifier_list
+    { $$ = $1; }
+;
+
+// identifier_list 辅助规则 (仅用于参数)
+identifier_list:
+    IDENTIFIER
+    {
+        $$ = nodelist_create();
+        nodelist_append($$, create_identifier_node($1));
+    }
+|   identifier_list COMMA IDENTIFIER
+    {
+        nodelist_append($1, create_identifier_node($3));
         $$ = $1;
     }
 ;

@@ -180,6 +180,14 @@ ASTNode* create_array_expression(NodeList *elements) {
     return node;
 }
 
+ASTNode* create_arrow_function_expression(NodeList *params, ASTNode *body, bool expression) {
+    ASTNode *node = create_base_node(NODE_ARROW_FUNCTION_EXPRESSION);
+    node->data.arrow_func_expr.params = params;
+    node->data.arrow_func_expr.body = body;
+    node->data.arrow_func_expr.expression = expression;
+    return node;
+}
+
 ASTNode* create_expression_statement(ASTNode *expression) {
     ASTNode *node = create_base_node(NODE_EXPRESSION_STATEMENT);
     node->data.expr_stmt.expression = expression;
@@ -353,6 +361,10 @@ void free_ast(ASTNode *node) {
             break;
         case NODE_ARRAY_EXPRESSION:
             nodelist_free(node->data.array_expr.elements);
+            break;
+        case NODE_ARROW_FUNCTION_EXPRESSION:
+            nodelist_free(node->data.arrow_func_expr.params);
+            free_ast(node->data.arrow_func_expr.body);
             break;
         case NODE_EXPRESSION_STATEMENT:
             free_ast(node->data.expr_stmt.expression);
@@ -593,6 +605,14 @@ void print_ast(ASTNode *node, int indent) {
             printf("ArrayExpression\n");
             print_indent(indent + 1); printf("elements:\n");
             nodelist_print(node->data.array_expr.elements, indent + 1);
+            break;
+        case NODE_ARROW_FUNCTION_EXPRESSION:
+            printf("ArrowFunctionExpression (expression: %s)\n",
+                node->data.arrow_func_expr.expression ? "true" : "false");
+            print_indent(indent + 1); printf("params:\n");
+            nodelist_print(node->data.arrow_func_expr.params, indent + 2);
+            print_indent(indent + 1); printf("body:\n");
+            print_ast(node->data.arrow_func_expr.body, indent + 2);
             break;
         case NODE_WHILE_STATEMENT:
             printf("WhileStatement\n");

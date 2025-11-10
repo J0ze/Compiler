@@ -22,6 +22,9 @@ function myTest() {
     10: c
     };
     let arr = [1, a, obj, []];
+    let fn1 = a => a + 1;
+    let fn2 = (a, b) => a + b;
+    let fn3 = () => { return 42; };
     // <-- 新添加的 switch 语句 -->
     switch (a) {
         case 10:
