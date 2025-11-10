@@ -161,6 +161,19 @@ ASTNode* create_throw_statement(ASTNode *argument) {
     return node;
 }
 
+ASTNode* create_object_expression(NodeList *properties) {
+    ASTNode *node = create_base_node(NODE_OBJECT_EXPRESSION);
+    node->data.object_expr.properties = properties;
+    return node;
+}
+
+ASTNode* create_property(ASTNode *key, ASTNode *value) {
+    ASTNode *node = create_base_node(NODE_PROPERTY);
+    node->data.property.key = key;
+    node->data.property.value = value;
+    return node;
+}
+
 ASTNode* create_expression_statement(ASTNode *expression) {
     ASTNode *node = create_base_node(NODE_EXPRESSION_STATEMENT);
     node->data.expr_stmt.expression = expression;
@@ -324,6 +337,13 @@ void free_ast(ASTNode *node) {
             break;
         case NODE_THROW_STATEMENT:
             free_ast(node->data.throw_stmt.argument);
+            break;
+        case NODE_OBJECT_EXPRESSION:
+            nodelist_free(node->data.object_expr.properties);
+            break;
+        case NODE_PROPERTY:
+            free_ast(node->data.property.key);
+            free_ast(node->data.property.value);
             break;
         case NODE_EXPRESSION_STATEMENT:
             free_ast(node->data.expr_stmt.expression);
@@ -547,6 +567,18 @@ void print_ast(ASTNode *node, int indent) {
             printf("ThrowStatement\n");
             print_indent(indent + 1); printf("argument:\n");
             print_ast(node->data.throw_stmt.argument, indent + 2);
+            break;
+        case NODE_OBJECT_EXPRESSION:
+            printf("ObjectExpression\n");
+            print_indent(indent + 1); printf("properties:\n");
+            nodelist_print(node->data.object_expr.properties, indent + 1);
+            break;
+        case NODE_PROPERTY:
+            printf("Property\n");
+            print_indent(indent + 1); printf("key:\n");
+            print_ast(node->data.property.key, indent + 2);
+            print_indent(indent + 1); printf("value:\n");
+            print_ast(node->data.property.value, indent + 2);
             break;
         case NODE_WHILE_STATEMENT:
             printf("WhileStatement\n");

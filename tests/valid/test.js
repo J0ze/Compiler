@@ -16,6 +16,11 @@ function myTest() {
     ++a; // a 变为 21
     let b = this.a;      // 测试: object.property (computed: false)
     let c = this[a];     // 测试: object[expression] (computed: true)
+    let obj = {
+    a: 1,
+    "b": a,
+    10: c
+    };
     // <-- 新添加的 switch 语句 -->
     switch (a) {
         case 10:

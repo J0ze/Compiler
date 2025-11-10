@@ -84,6 +84,10 @@ int yylex(void)
 %type <node> catch_clause
 %type <node> finally_clause
 %type <node> throw_statement
+%type <node> object_expression
+%type <list> property_list
+%type <node> property
+%type <node> property_name
 %type <node> switch_statement
 %type <list> switch_case_list
 %type <node> switch_case
@@ -577,6 +581,49 @@ primary_expression:
     { $$ = create_literal_node(LITERAL_NULL, strdup("null")); }
 | LPAREN expression RPAREN
     { $$ = $2; } // 直接传递括号内表达式的节点
+| object_expression
+    { $$ = $1; }
+;
+
+object_expression:
+    // 空对象 {}
+    LBRACE RBRACE
+    { $$ = create_object_expression(nodelist_create()); }
+
+    // { a: 1, b: 2 }
+|   LBRACE property_list RBRACE
+    { $$ = create_object_expression($2); }
+;
+
+// property_list 负责构建属性的 NodeList
+property_list:
+    property
+    {
+        $$ = nodelist_create();
+        nodelist_append($$, $1);
+    }
+|   property_list COMMA property
+    {
+        nodelist_append($1, $3);
+        $$ = $1;
+    }
+;
+
+// property 匹配 'key: value'
+property:
+    property_name COLON assignment_expression
+    { $$ = create_property($1, $3); }
+;
+
+// property_name 匹配对象的键 (key)
+// ESTree 允许标识符、字符串或数字作为键
+property_name:
+    IDENTIFIER
+    { $$ = create_identifier_node($1); }
+|   STRING_LITERAL
+    { $$ = create_literal_node(LITERAL_STRING, $1); }
+|   NUMERIC_LITERAL
+    { $$ = create_literal_node(LITERAL_NUMBER, $1); }
 ;
 
 %%
