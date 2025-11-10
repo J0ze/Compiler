@@ -27,6 +27,7 @@ typedef enum {
     NODE_THROW_STATEMENT,
     NODE_OBJECT_EXPRESSION,
     NODE_PROPERTY,
+    NODE_ARRAY_EXPRESSION,
     NODE_EXPRESSION_STATEMENT,
     NODE_RETURN_STATEMENT,
     NODE_FUNCTION_DECLARATION,
@@ -196,6 +197,11 @@ typedef struct ASTNode {
             // (未来可以添加: 'kind' (init, get, set), 'computed' 等)
         } property;
 
+        // NODE_ARRAY_EXPRESSION ( [ ... ] )
+        struct {
+            NodeList *elements;
+        } array_expr;
+
         // NODE_EXPRESSION_STATEMENT
         struct {
             struct ASTNode *expression;
@@ -275,6 +281,7 @@ ASTNode* create_catch_clause(ASTNode *param, ASTNode *body);
 ASTNode* create_throw_statement(ASTNode *argument);
 ASTNode* create_object_expression(NodeList *properties);
 ASTNode* create_property(ASTNode *key, ASTNode *value);
+ASTNode* create_array_expression(NodeList *elements);
 ASTNode* create_expression_statement(ASTNode *expression);
 ASTNode* create_return_statement(ASTNode *argument);
 ASTNode* create_function_declaration(ASTNode *id, NodeList *params, ASTNode *body);

@@ -174,6 +174,12 @@ ASTNode* create_property(ASTNode *key, ASTNode *value) {
     return node;
 }
 
+ASTNode* create_array_expression(NodeList *elements) {
+    ASTNode *node = create_base_node(NODE_ARRAY_EXPRESSION);
+    node->data.array_expr.elements = elements;
+    return node;
+}
+
 ASTNode* create_expression_statement(ASTNode *expression) {
     ASTNode *node = create_base_node(NODE_EXPRESSION_STATEMENT);
     node->data.expr_stmt.expression = expression;
@@ -309,7 +315,7 @@ void free_ast(ASTNode *node) {
             break;
         case NODE_CONTINUE_STATEMENT:
             break;
-            case NODE_SWITCH_STATEMENT:
+        case NODE_SWITCH_STATEMENT:
             free_ast(node->data.switch_stmt.discriminant);
             nodelist_free(node->data.switch_stmt.cases);
             break;
@@ -344,6 +350,9 @@ void free_ast(ASTNode *node) {
         case NODE_PROPERTY:
             free_ast(node->data.property.key);
             free_ast(node->data.property.value);
+            break;
+        case NODE_ARRAY_EXPRESSION:
+            nodelist_free(node->data.array_expr.elements);
             break;
         case NODE_EXPRESSION_STATEMENT:
             free_ast(node->data.expr_stmt.expression);
@@ -579,6 +588,11 @@ void print_ast(ASTNode *node, int indent) {
             print_ast(node->data.property.key, indent + 2);
             print_indent(indent + 1); printf("value:\n");
             print_ast(node->data.property.value, indent + 2);
+            break;
+        case NODE_ARRAY_EXPRESSION:
+            printf("ArrayExpression\n");
+            print_indent(indent + 1); printf("elements:\n");
+            nodelist_print(node->data.array_expr.elements, indent + 1);
             break;
         case NODE_WHILE_STATEMENT:
             printf("WhileStatement\n");

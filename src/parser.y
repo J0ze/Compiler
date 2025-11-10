@@ -88,6 +88,8 @@ int yylex(void)
 %type <list> property_list
 %type <node> property
 %type <node> property_name
+%type <node> array_expression
+%type <list> element_list
 %type <node> switch_statement
 %type <list> switch_case_list
 %type <node> switch_case
@@ -583,6 +585,8 @@ primary_expression:
     { $$ = $2; } // 直接传递括号内表达式的节点
 | object_expression
     { $$ = $1; }
+| array_expression
+    { $$ = $1; }
 ;
 
 object_expression:
@@ -624,6 +628,31 @@ property_name:
     { $$ = create_literal_node(LITERAL_STRING, $1); }
 |   NUMERIC_LITERAL
     { $$ = create_literal_node(LITERAL_NUMBER, $1); }
+;
+
+array_expression:
+    // 空数组 []
+    LBRACK RBRACK
+    { $$ = create_array_expression(nodelist_create()); }
+
+    // [ 1, 2, 3 ]
+|   LBRACK element_list RBRACK
+    { $$ = create_array_expression($2); }
+;
+
+// element_list 负责构建元素的 NodeList
+// (这和 argument_list 的逻辑几乎一样)
+element_list:
+    assignment_expression
+    {
+        $$ = nodelist_create();
+        nodelist_append($$, $1);
+    }
+|   element_list COMMA assignment_expression
+    {
+        nodelist_append($1, $3);
+        $$ = $1;
+    }
 ;
 
 %%

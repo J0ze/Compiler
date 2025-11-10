@@ -21,6 +21,7 @@ function myTest() {
     "b": a,
     10: c
     };
+    let arr = [1, a, obj, []];
     // <-- 新添加的 switch 语句 -->
     switch (a) {
         case 10:
