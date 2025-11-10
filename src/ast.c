@@ -92,6 +92,13 @@ ASTNode* create_while_statement(ASTNode *test, ASTNode *body) {
     return node;
 }
 
+ASTNode* create_do_while_statement(ASTNode *body, ASTNode *test) {
+    ASTNode *node = create_base_node(NODE_DO_WHILE_STATEMENT);
+    node->data.do_while_stmt.body = body;
+    node->data.do_while_stmt.test = test;
+    return node;
+}
+
 ASTNode* create_for_statement(ASTNode *init, ASTNode *test, ASTNode *update, ASTNode *body) {
     ASTNode *node = create_base_node(NODE_FOR_STATEMENT);
     node->data.for_stmt.init = init;
@@ -312,6 +319,10 @@ void free_ast(ASTNode *node) {
         case NODE_WHILE_STATEMENT:
             free_ast(node->data.while_stmt.test);
             free_ast(node->data.while_stmt.body);
+            break;
+        case NODE_DO_WHILE_STATEMENT:
+            free_ast(node->data.do_while_stmt.body);
+            free_ast(node->data.do_while_stmt.test);
             break;
         case NODE_FOR_STATEMENT:
             free_ast(node->data.for_stmt.init);
@@ -620,6 +631,13 @@ void print_ast(ASTNode *node, int indent) {
             print_ast(node->data.while_stmt.test, indent + 2);
             print_indent(indent + 1); printf("body:\n");
             print_ast(node->data.while_stmt.body, indent + 2);
+            break;
+        case NODE_DO_WHILE_STATEMENT:
+            printf("DoWhileStatement\n");
+            print_indent(indent + 1); printf("body:\n");
+            print_ast(node->data.do_while_stmt.body, indent + 2);
+            print_indent(indent + 1); printf("test:\n");
+            print_ast(node->data.do_while_stmt.test, indent + 2);
             break;
         case NODE_FOR_STATEMENT:
             printf("ForStatement\n");

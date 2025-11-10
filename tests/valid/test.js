@@ -11,6 +11,11 @@ function myTest() {
     }
     // a 在这里应该是 20
     ++a; // a 变为 21
+    // <-- 新添加的 do-while 循环 -->
+    do {
+        a = a + 1; // a 变为 22
+    } while (a < 22);
+    // a 在这里应该是 22
     let b = this.a;      // 测试: object.property (computed: false)
     let c = this[a];     // 测试: object[expression] (computed: true)
     let obj = {

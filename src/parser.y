@@ -63,7 +63,7 @@ int yylex(void)
 %type <list> statement_list
 %type <node> statement
 %type <node> Script
-%type <node> block_statement variable_statement expression_statement if_statement iteration_statement while_statement for_statement
+%type <node> block_statement variable_statement expression_statement if_statement iteration_statement while_statement for_statement do_while_statement
 %type <node> for_init
 %type <node> return_statement
 %type <node> function_declaration
@@ -275,6 +275,8 @@ iteration_statement:
     { $$ = $1; }
 |   for_statement
     { $$ = $1; }
+|   do_while_statement
+    { $$ = $1; }
 ;
 
 while_statement:
@@ -295,6 +297,11 @@ for_init:
     { $$ = $1; }
 |   expression              // 例如: i = 0, j = 0
     { $$ = $1; }
+;
+
+do_while_statement:
+    DO statement WHILE LPAREN expression RPAREN optional_semicolon
+    { $$ = create_do_while_statement($2, $5); }
 ;
 
 break_statement:

@@ -15,6 +15,7 @@ typedef enum {
     NODE_THIS_EXPRESSION,
     NODE_IF_STATEMENT,
     NODE_WHILE_STATEMENT,
+    NODE_DO_WHILE_STATEMENT,
     NODE_FOR_STATEMENT,
     NODE_BREAK_STATEMENT,
     NODE_CONTINUE_STATEMENT,
@@ -129,6 +130,12 @@ typedef struct ASTNode {
             struct ASTNode *test;
             struct ASTNode *body;
         } while_stmt;
+
+        // NODE_DO_WHILE_STATEMENT
+        struct {
+            struct ASTNode *body;
+            struct ASTNode *test;
+        } do_while_stmt;
 
         // NODE_FOR_STATEMENT
         struct {
@@ -277,6 +284,7 @@ ASTNode* create_this_node();
 ASTNode* create_script_node(NodeList *body);
 ASTNode* create_if_statement(ASTNode *test, ASTNode *consequent, ASTNode *alternate);
 ASTNode* create_while_statement(ASTNode *test, ASTNode *body);
+ASTNode* create_do_while_statement(ASTNode *body, ASTNode *test);
 ASTNode* create_for_statement(ASTNode *init, ASTNode *test, ASTNode *update, ASTNode *body);
 ASTNode* create_break_statement(void);
 ASTNode* create_continue_statement(void);
