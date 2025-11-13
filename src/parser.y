@@ -95,6 +95,10 @@ int yylex(void)
 %type <list> identifier_list // 辅助规则
 %type <node> arrow_body
 %type <node> function_expression
+%type <node> class_declaration
+%type <node> class_body
+%type <list> method_definition_list
+%type <node> method_definition
 %type <node> switch_statement
 %type <list> switch_case_list
 %type <node> switch_case
@@ -178,6 +182,8 @@ statement:
 | try_statement
     { $$ = $1; }
 | throw_statement
+    { $$ = $1; }
+| class_declaration
     { $$ = $1; }
 ;
 
@@ -411,6 +417,38 @@ function_expression:
     // 案例 2: 命名函数 function foo(...) { ... }
 |   FUNCTION IDENTIFIER arguments block_statement
     { $$ = create_function_expression(create_identifier_node($2), $3, $4); }
+;
+
+class_declaration:
+    // (我们暂时不支持 'extends'，所以 superClass 为 NULL)
+    CLASS IDENTIFIER class_body
+    { $$ = create_class_declaration(create_identifier_node($2), NULL, $3); }
+;
+
+class_body:
+    LBRACE method_definition_list RBRACE
+    { $$ = create_class_body($2); }
+;
+
+method_definition_list:
+    /* empty */
+    { $$ = nodelist_create(); }
+|   method_definition_list method_definition
+    {
+        nodelist_append($1, $2);
+        $$ = $1;
+    }
+;
+
+// 一个方法定义 (例如 'constructor() { ... }' 或 'myMethod() { ... }')
+method_definition:
+    property_name arguments block_statement
+    {
+        // 我们重用 'function_expression' 来存储 'value' (参数和函数体)
+        // 'key' 是 'property_name' (例如 'constructor' 或 'myMethod')
+        ASTNode* func_value = create_function_expression(NULL, $2, $3);
+        $$ = create_method_definition($1, func_value);
+    }
 ;
 
 /* --- 表达式 (来自 3.3 节) --- */

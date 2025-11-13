@@ -55,3 +55,14 @@ function myTest() {
 let d = new myTest();   // 测试 new MyClass()
 let e = new myTest;
 myTest();
+class Person {
+    constructor(name) {
+        this.name = name;
+    }
+
+    greet() {
+        return "Hello";
+    }
+}
+
+let p = new Person("Alice");

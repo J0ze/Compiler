@@ -203,6 +203,36 @@ ASTNode* create_function_expression(ASTNode *id, NodeList *params, ASTNode *body
     return node;
 }
 
+ASTNode* create_class_declaration(ASTNode *id, ASTNode *superClass, ASTNode *body) {
+    ASTNode *node = create_base_node(NODE_CLASS_DECLARATION);
+    node->data.class_decl.id = id;
+    node->data.class_decl.superClass = superClass;
+    node->data.class_decl.body = body;
+    return node;
+}
+
+ASTNode* create_class_body(NodeList *methods) {
+    ASTNode *node = create_base_node(NODE_CLASS_BODY);
+    node->data.class_body.body = methods;
+    return node;
+}
+
+// 这个函数会自动推断 'kind' (种类)
+ASTNode* create_method_definition(ASTNode *key, ASTNode *value) {
+    ASTNode *node = create_base_node(NODE_METHOD_DEFINITION);
+    node->data.method_def.key = key;
+    node->data.method_def.value = value;
+    node->data.method_def.is_static = false; // (我们稍后会实现 static)
+
+    // 自动推断 'kind'
+    if (key->type == NODE_IDENTIFIER && strcmp(key->data.identifier.name, "constructor") == 0) {
+        node->data.method_def.kind = KIND_CONSTRUCTOR;
+    } else {
+        node->data.method_def.kind = KIND_METHOD;
+    }
+    return node;
+}
+
 ASTNode* create_expression_statement(ASTNode *expression) {
     ASTNode *node = create_base_node(NODE_EXPRESSION_STATEMENT);
     node->data.expr_stmt.expression = expression;
@@ -401,6 +431,18 @@ void free_ast(ASTNode *node) {
             nodelist_free(node->data.func_decl.params);
             free_ast(node->data.func_decl.body);
         break;
+        case NODE_CLASS_DECLARATION:
+            free_ast(node->data.class_decl.id);
+            free_ast(node->data.class_decl.superClass);
+            free_ast(node->data.class_decl.body);
+            break;
+        case NODE_CLASS_BODY:
+            nodelist_free(node->data.class_body.body);
+            break;
+        case NODE_METHOD_DEFINITION:
+            free_ast(node->data.method_def.key);
+            free_ast(node->data.method_def.value);
+            break;
         case NODE_BINARY_EXPRESSION:
             free_ast(node->data.binary_expr.left);
             free_ast(node->data.binary_expr.right);
@@ -647,6 +689,37 @@ void print_ast(ASTNode *node, int indent) {
             print_indent(indent + 1); printf("body:\n");
             print_ast(node->data.func_expr.body, indent + 2);
             break;
+        case NODE_CLASS_DECLARATION:
+            printf("ClassDeclaration\n");
+            print_indent(indent + 1); printf("id:\n");
+            print_ast(node->data.class_decl.id, indent + 2);
+            print_indent(indent + 1); printf("superClass:\n");
+            print_ast(node->data.class_decl.superClass, indent + 2);
+            print_indent(indent + 1); printf("body:\n");
+            print_ast(node->data.class_decl.body, indent + 2);
+            break;
+        case NODE_CLASS_BODY:
+            printf("ClassBody\n");
+            print_indent(indent + 1); printf("body:\n");
+            nodelist_print(node->data.class_body.body, indent + 1);
+            break;
+        case NODE_METHOD_DEFINITION:
+        {
+            const char* kind_str;
+            switch(node->data.method_def.kind) {
+                case KIND_CONSTRUCTOR: kind_str = "constructor"; break;
+                case KIND_METHOD: kind_str = "method"; break;
+                case KIND_GET: kind_str = "get"; break;
+                case KIND_SET: kind_str = "set"; break;
+                default: kind_str = "unknown";
+            }
+            printf("MethodDefinition (kind: %s, static: %s)\n", kind_str, node->data.method_def.is_static ? "true" : "false");
+            print_indent(indent + 1); printf("key:\n");
+            print_ast(node->data.method_def.key, indent + 2);
+            print_indent(indent + 1); printf("value:\n");
+            print_ast(node->data.method_def.value, indent + 2);
+            break;
+        }
         case NODE_WHILE_STATEMENT:
             printf("WhileStatement\n");
             print_indent(indent + 1); printf("test:\n");

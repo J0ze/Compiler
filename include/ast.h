@@ -31,6 +31,9 @@ typedef enum {
     NODE_ARRAY_EXPRESSION,
     NODE_ARROW_FUNCTION_EXPRESSION,
     NODE_FUNCTION_EXPRESSION,
+    NODE_CLASS_DECLARATION,
+    NODE_CLASS_BODY,
+    NODE_METHOD_DEFINITION,
     NODE_EXPRESSION_STATEMENT,
     NODE_RETURN_STATEMENT,
     NODE_FUNCTION_DECLARATION,
@@ -68,6 +71,14 @@ typedef enum {
     OP_MUL, OP_MOD, OP_POWER
     // ... 可根据需要添加其他赋值操作符 ...
 } BinaryOpType;
+
+// 方法定义类型
+typedef enum {
+    KIND_CONSTRUCTOR,
+    KIND_METHOD,
+    KIND_GET, // (为未来准备)
+    KIND_SET  // (为未来准备)
+} MethodKind;
 
 // 一元操作符
 typedef enum {
@@ -225,6 +236,26 @@ typedef struct ASTNode {
             struct ASTNode *body;   // 函数体 (BlockStatement)
         } func_expr;
 
+        // NODE_CLASS_DECLARATION
+        struct {
+            struct ASTNode *id;     // 类名 (Identifier)
+            struct ASTNode *superClass; // 继承 (Expression 或 NULL)
+            struct ASTNode *body;   // ClassBody 节点
+        } class_decl;
+
+        // NODE_CLASS_BODY
+        struct {
+            NodeList *body; // MethodDefinition 节点的列表
+        } class_body;
+
+        // NODE_METHOD_DEFINITION
+        struct {
+            struct ASTNode *key;
+            struct ASTNode *value; // 这是一个 FunctionExpression
+            MethodKind kind;
+            bool is_static;
+        } method_def;
+
         // NODE_EXPRESSION_STATEMENT
         struct {
             struct ASTNode *expression;
@@ -308,6 +339,9 @@ ASTNode* create_property(ASTNode *key, ASTNode *value);
 ASTNode* create_array_expression(NodeList *elements);
 ASTNode* create_arrow_function_expression(NodeList *params, ASTNode *body, bool expression);
 ASTNode* create_function_expression(ASTNode *id, NodeList *params, ASTNode *body);
+ASTNode* create_class_declaration(ASTNode *id, ASTNode *superClass, ASTNode *body);
+ASTNode* create_class_body(NodeList *methods);
+ASTNode* create_method_definition(ASTNode *key, ASTNode *value); // (我们将在这个函数内部推导 kind)
 ASTNode* create_expression_statement(ASTNode *expression);
 ASTNode* create_return_statement(ASTNode *argument);
 ASTNode* create_function_declaration(ASTNode *id, NodeList *params, ASTNode *body);
