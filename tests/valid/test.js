@@ -53,7 +53,6 @@ function myTest() {
     return a > 40 ? 1 : 0;
 }
 let d = new myTest();   // 测试 new MyClass()
-let e = new myTest;
 myTest();
 class Person {
     constructor(name) {
@@ -64,5 +63,16 @@ class Person {
         return "Hello";
     }
 }
-
 let p = new Person("Alice");
+class Employee extends Person {
+    constructor(name, title) {
+        // (我们还没有实现 'super' 关键字，但这在语法上是正确的)
+        this.title = title;
+    }
+
+    greetEmployee() {
+        return "Hello employee";
+    }
+}
+
+let e = new Employee("Bob", "Manager");

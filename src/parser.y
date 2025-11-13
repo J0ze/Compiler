@@ -420,9 +420,13 @@ function_expression:
 ;
 
 class_declaration:
-    // (我们暂时不支持 'extends'，所以 superClass 为 NULL)
+    // 案例 1: class MyClass { ... }
     CLASS IDENTIFIER class_body
     { $$ = create_class_declaration(create_identifier_node($2), NULL, $3); }
+
+    // 案例 2: class MyClass extends SuperClass { ... }
+|   CLASS IDENTIFIER EXTENDS assignment_expression class_body
+    { $$ = create_class_declaration(create_identifier_node($2), $4, $5); }
 ;
 
 class_body:
