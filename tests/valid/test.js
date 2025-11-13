@@ -62,8 +62,13 @@ class Person {
     greet() {
         return "Hello";
     }
+
+    static staticGreet() {
+        return "Static Hello";
+    }
 }
 let p = new Person("Alice");
+Person.staticGreet();
 class Employee extends Person {
     constructor(name, title) {
         super(name); // <-- 在此调用 super()

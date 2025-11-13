@@ -444,14 +444,20 @@ method_definition_list:
     }
 ;
 
-// 一个方法定义 (例如 'constructor() { ... }' 或 'myMethod() { ... }')
+// 一个方法定义
 method_definition:
+    // 案例 1: 普通方法 'myMethod() { ... }'
     property_name arguments block_statement
     {
-        // 我们重用 'function_expression' 来存储 'value' (参数和函数体)
-        // 'key' 是 'property_name' (例如 'constructor' 或 'myMethod')
         ASTNode* func_value = create_function_expression(NULL, $2, $3);
-        $$ = create_method_definition($1, func_value);
+        $$ = create_method_definition($1, func_value, false); // 传递 is_static = false
+    }
+
+    // 案例 2: 静态方法 'static myMethod() { ... }'
+|   STATIC property_name arguments block_statement
+    {
+        ASTNode* func_value = create_function_expression(NULL, $3, $4);
+        $$ = create_method_definition($2, func_value, true); // 传递 is_static = true
     }
 ;
 

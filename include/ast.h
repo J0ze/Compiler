@@ -345,7 +345,7 @@ ASTNode* create_arrow_function_expression(NodeList *params, ASTNode *body, bool 
 ASTNode* create_function_expression(ASTNode *id, NodeList *params, ASTNode *body);
 ASTNode* create_class_declaration(ASTNode *id, ASTNode *superClass, ASTNode *body);
 ASTNode* create_class_body(NodeList *methods);
-ASTNode* create_method_definition(ASTNode *key, ASTNode *value); // (我们将在这个函数内部推导 kind)
+ASTNode* create_method_definition(ASTNode *key, ASTNode *value, bool is_static);
 ASTNode* create_super_node(void);
 ASTNode* create_expression_statement(ASTNode *expression);
 ASTNode* create_return_statement(ASTNode *argument);

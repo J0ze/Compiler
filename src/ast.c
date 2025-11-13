@@ -217,12 +217,11 @@ ASTNode* create_class_body(NodeList *methods) {
     return node;
 }
 
-// 这个函数会自动推断 'kind' (种类)
-ASTNode* create_method_definition(ASTNode *key, ASTNode *value) {
+ASTNode* create_method_definition(ASTNode *key, ASTNode *value, bool is_static) {
     ASTNode *node = create_base_node(NODE_METHOD_DEFINITION);
     node->data.method_def.key = key;
     node->data.method_def.value = value;
-    node->data.method_def.is_static = false; // (我们稍后会实现 static)
+    node->data.method_def.is_static = is_static; // <-- 使用传入的参数
 
     // 自动推断 'kind'
     if (key->type == NODE_IDENTIFIER && strcmp(key->data.identifier.name, "constructor") == 0) {
