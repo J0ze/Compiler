@@ -233,6 +233,11 @@ ASTNode* create_method_definition(ASTNode *key, ASTNode *value) {
     return node;
 }
 
+ASTNode* create_super_node(void) {
+    ASTNode *node = create_base_node(NODE_SUPER);
+    return node;
+}
+
 ASTNode* create_expression_statement(ASTNode *expression) {
     ASTNode *node = create_base_node(NODE_EXPRESSION_STATEMENT);
     node->data.expr_stmt.expression = expression;
@@ -443,6 +448,8 @@ void free_ast(ASTNode *node) {
             free_ast(node->data.method_def.key);
             free_ast(node->data.method_def.value);
             break;
+        case NODE_SUPER:
+            break; // 无子节点
         case NODE_BINARY_EXPRESSION:
             free_ast(node->data.binary_expr.left);
             free_ast(node->data.binary_expr.right);
@@ -720,6 +727,9 @@ void print_ast(ASTNode *node, int indent) {
             print_ast(node->data.method_def.value, indent + 2);
             break;
         }
+        case NODE_SUPER:
+            printf("SuperExpression\n");
+            break;
         case NODE_WHILE_STATEMENT:
             printf("WhileStatement\n");
             print_indent(indent + 1); printf("test:\n");

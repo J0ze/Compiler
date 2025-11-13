@@ -34,6 +34,7 @@ typedef enum {
     NODE_CLASS_DECLARATION,
     NODE_CLASS_BODY,
     NODE_METHOD_DEFINITION,
+    NODE_SUPER,
     NODE_EXPRESSION_STATEMENT,
     NODE_RETURN_STATEMENT,
     NODE_FUNCTION_DECLARATION,
@@ -256,6 +257,9 @@ typedef struct ASTNode {
             bool is_static;
         } method_def;
 
+        // NODE_SUPER (无子节点)
+        struct {} super_expr;
+
         // NODE_EXPRESSION_STATEMENT
         struct {
             struct ASTNode *expression;
@@ -342,6 +346,7 @@ ASTNode* create_function_expression(ASTNode *id, NodeList *params, ASTNode *body
 ASTNode* create_class_declaration(ASTNode *id, ASTNode *superClass, ASTNode *body);
 ASTNode* create_class_body(NodeList *methods);
 ASTNode* create_method_definition(ASTNode *key, ASTNode *value); // (我们将在这个函数内部推导 kind)
+ASTNode* create_super_node(void);
 ASTNode* create_expression_statement(ASTNode *expression);
 ASTNode* create_return_statement(ASTNode *argument);
 ASTNode* create_function_declaration(ASTNode *id, NodeList *params, ASTNode *body);

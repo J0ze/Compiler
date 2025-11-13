@@ -659,7 +659,7 @@ argument_list:
 ;
 
 primary_expression:
-    THIS
+THIS
     { $$ = create_this_node(); }
 | IDENTIFIER
     { $$ = create_identifier_node($1); }
@@ -686,6 +686,8 @@ primary_expression:
     }
 |   function_expression
     { $$ = $1; }
+|   SUPER
+    { $$ = create_super_node(); }
 ;
 
 object_expression:

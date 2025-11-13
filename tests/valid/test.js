@@ -66,7 +66,7 @@ class Person {
 let p = new Person("Alice");
 class Employee extends Person {
     constructor(name, title) {
-        // (我们还没有实现 'super' 关键字，但这在语法上是正确的)
+        super(name); // <-- 在此调用 super()
         this.title = title;
     }
 
