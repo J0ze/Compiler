@@ -71,7 +71,7 @@ class Employee extends Person {
     }
 
     greetEmployee() {
-        return "Hello employee";
+        return super.greet() + "employee";
     }
 }
 
