@@ -4,17 +4,10 @@
 %{
 #include <stdio.h>
 #include <string.h>
-
-/*
- * 修复 (Bison 2.x):
- * 1. 移除了 %code requires (因为它不被你的 bison 版本支持).
- * 2. 在 *顶部* 包含了 ast.h. 只要 ast.h (正确地) 不包含
- * common.h, 这就不会产生循环依赖.
- * 3. Bison 2.x 会将这个 include 复制到 parser.tab.h 中, 
- * 因此 %union 中的 'NodeList' 类型将是已知的.
- */
 #include "common.h" // 包含 Scanner/ParserState 定义
-// #include "parser.tab.h" // <-- 保持移除. common.h 会包含它.
+// #include "ast.h" // <-- 修复: 移除. 'common.h' 已经包含了它.
+// #include "parser.tab.h" // <-- 修复: 移除. 'common.h' 已经包含了它.
+
 
 // 全局变量的声明 (在 main.c 中定义)
 extern ParserState *scanner;
@@ -31,17 +24,13 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 
 %}
 
-/*
- * 修复: 移除不被支持的 %code requires 块
+/* * 修复: 我们不再使用 %code requires.
+ * 'common.h' 现在负责在 'parser.tab.h' 之前
+ * 加载 'ast.h' (和 'NodeList').
  */
-/*
-%code requires {
-    #include "ast.h" 
-}
-*/
 
 
-/* 启用纯净/可重入解析器 (Bison 2.x 语法) */
+/* 启用纯净/可_re-entrant 解析器 (Bison 2.x 语法) */
 %pure-parser
 
 /* 启用位置跟踪 (YYLTYPE) */
@@ -55,7 +44,7 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 %union {
     char *str_val;
     struct ASTNode *node;
-    NodeList *list; // <-- 'NodeList' 现在是已知的
+    NodeList *list;
 }
 
 /* 终结符 (Tokens) */
@@ -81,7 +70,6 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 %token TOK_VIRTUAL_SEMICOLON
 
 /* * 非终结符的类型
- * (修复了所有 <node> 和 <list> 的错误)
  */
 
 /* 列表类型 <list> (NodeList*) */
@@ -153,6 +141,7 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 %type <node> method_definition
 %type <node> switch_statement
 %type <node> switch_case
+%type <node> empty_statement /* <-- 修复: 为空语句添加类型 */
 
 
 /* 优先级和结合性 */
@@ -178,7 +167,7 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 %start Script
 
 %%
-/* 文法规则区 (已删除所有末尾的多余分号) */
+/* 文法规则区 */
 
 Script:
     statement_list_opt
@@ -194,11 +183,11 @@ statement_list:
     statement 
     { 
         $$ = nodelist_create(); 
-        nodelist_append($$, $1); 
+        if ($1 != NULL) nodelist_append($$, $1); /* <-- 修复: 检查 NULL */
     }
 |   statement_list statement 
     { 
-        nodelist_append($1, $2); 
+        if ($2 != NULL) nodelist_append($1, $2); /* <-- 修复: 检查 NULL */
         $$ = $1; 
     }
 
@@ -229,6 +218,17 @@ statement:
     { $$ = $1; }
 |   class_declaration
     { $$ = $1; }
+|   empty_statement /* <-- 修复: 添加空语句规则 */
+    { $$ = $1; }
+
+/*
+ * 修复: 为空语句 (e.g. ";") 添加新规则
+ * 这对于 ASI 插入虚拟分号 (如在 '}' 之后) 也至关重要
+ */
+empty_statement:
+    StatementTerminator
+    { $$ = NULL; } /* 空语句在 AST 中表示为 NULL */
+
 
 block_statement:
     LBRACE statement_list_opt RBRACE
@@ -384,7 +384,7 @@ case_statement_list:
     { $$ = nodelist_create(); }
 |   case_statement_list statement
     {
-        nodelist_append($1, $2);
+        if ($2 != NULL) nodelist_append($1, $2); /* <-- 修复: 检查 NULL */
         $$ = $1;
     }
 
@@ -461,6 +461,11 @@ assignment_expression:
     { $$ = $1; }
 |   left_hand_side_expression ASSIGN assignment_expression
     { $$ = create_assignment_expr(OP_ASSIGN, $1, $3); }
+|   left_hand_side_expression ADD_ASSIGN assignment_expression
+    { $$ = create_assignment_expr(OP_PLUS, $1, $3); } /* 示例: 可扩展 */
+|   left_hand_side_expression SUB_ASSIGN assignment_expression
+    { $$ = create_assignment_expr(OP_MINUS, $1, $3); } /* 示例: 可扩展 */
+
 
 conditional_expression:
     logical_or_expression

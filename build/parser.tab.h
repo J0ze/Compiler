@@ -226,11 +226,11 @@
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 55 "src/parser.y"
+#line 44 "src/parser.y"
 {
     char *str_val;
     struct ASTNode *node;
-    NodeList *list; // <-- 'NodeList' 现在是已知的
+    NodeList *list;
 }
 /* Line 1529 of yacc.c.  */
 #line 237 "build/parser.tab.h"

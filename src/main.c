@@ -8,7 +8,7 @@
 // 定义 parser.y 中声明的全局变量
 ParserState *scanner;
 ASTNode *ast_root;
-
+int yyparse(ParserState* state);
 // yyparse() 的原型现在在 parser.tab.h 中
 // extern int yyparse(); // <-- 修复 3: 移除这个不正确的声明
 

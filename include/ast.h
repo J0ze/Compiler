@@ -1,6 +1,6 @@
 #ifndef AST_H
 #define AST_H
-
+#include <stdbool.h>
 // AST 节点类型
 typedef enum {
     NODE_SCRIPT,              // 顶层脚本 (语句列表的容器)
