@@ -126,7 +126,8 @@
      TRUE_LITERAL = 342,
      FALSE_LITERAL = 343,
      NULL_LITERAL = 344,
-     UPOSTFIX = 345
+     TOK_VIRTUAL_SEMICOLON = 345,
+     UPOSTFIX = 346
    };
 #endif
 /* Tokens.  */
@@ -217,26 +218,41 @@
 #define TRUE_LITERAL 342
 #define FALSE_LITERAL 343
 #define NULL_LITERAL 344
-#define UPOSTFIX 345
+#define TOK_VIRTUAL_SEMICOLON 345
+#define UPOSTFIX 346
 
 
 
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 34 "src/parser.y"
+#line 55 "src/parser.y"
 {
     char *str_val;
-    struct ASTNode *node; // *** 更新：使用 ast.h 中的类型 ***
-    NodeList *list;
+    struct ASTNode *node;
+    NodeList *list; // <-- 'NodeList' 现在是已知的
 }
 /* Line 1529 of yacc.c.  */
-#line 235 "build/parser.tab.h"
+#line 237 "build/parser.tab.h"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1
 #endif
 
-extern YYSTYPE yylval;
+
+
+#if ! defined YYLTYPE && ! defined YYLTYPE_IS_DECLARED
+typedef struct YYLTYPE
+{
+  int first_line;
+  int first_column;
+  int last_line;
+  int last_column;
+} YYLTYPE;
+# define yyltype YYLTYPE /* obsolescent; will be withdrawn */
+# define YYLTYPE_IS_DECLARED 1
+# define YYLTYPE_IS_TRIVIAL 1
+#endif
+
 

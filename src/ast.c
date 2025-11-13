@@ -1,29 +1,30 @@
 #include "ast.h"
 #include <stdlib.h>
 #include <string.h>
-
+#include "parser.tab.h" // <-- 添加这一行, 否则 RBRACE 未定义.
+#include "common.h"
+extern ParserState *scanner;
 //列表创建函数
 NodeList* nodelist_create(void) {
     NodeList *list = (NodeList*)malloc(sizeof(NodeList));
     if (!list) {
-        yyerror("Out of memory");
+        yyerror(NULL, scanner, "Out of memory");
         exit(1);
     }
     list->size = 0;
     list->capacity = 4; // 初始容量为 4
     list->nodes = (ASTNode**)malloc(list->capacity * sizeof(ASTNode*));
     if (!list->nodes) {
-        yyerror("Out of memory");
+        yyerror(NULL, scanner, "Out of memory");
         exit(1);
     }
     return list;
 }
 // 内部辅助函数：创建一个基础节点
 static ASTNode* create_base_node(NodeType type) {
-    extern Scanner* scanner; // 访问在 main.c 中定义的全局 scanner
     ASTNode *node = (ASTNode*)malloc(sizeof(ASTNode));
     if (!node) {
-        yyerror("Out of memory");
+        yyerror(NULL, scanner, "Out of memory");
         exit(1);
     }
     node->type = type;
@@ -304,7 +305,7 @@ void nodelist_append(NodeList* list, ASTNode* node) {
         list->capacity *= 2;
         list->nodes = (ASTNode**)realloc(list->nodes, list->capacity * sizeof(ASTNode*));
         if (!list->nodes) {
-            yyerror("Out of memory");
+            yyerror(NULL, scanner, "Out of memory");
             exit(1);
         }
     }
@@ -322,13 +323,6 @@ void nodelist_free(NodeList* list) {
     free(list->nodes);
     // 释放列表结构体
     free(list);
-}
-
-bool can_insert_semicolon(Scanner *scanner) {
-    // 简化的实现：如果看到了换行符，就允许插入
-    // 完整的实现还需要检查下一个 token 是否是 '}' 或 EOF
-    // (这需要Bison的 lookahead 功能，比较复杂)
-    return scanner->line_terminator_seen;
 }
 
 // 内存管理

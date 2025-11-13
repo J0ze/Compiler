@@ -4,37 +4,58 @@
 %{
 #include <stdio.h>
 #include <string.h>
-#include "common.h" // 包含 Scanner 定义
-#include "ast.h"    // 引入 AST 节点定义
+
+/*
+ * 修复 (Bison 2.x):
+ * 1. 移除了 %code requires (因为它不被你的 bison 版本支持).
+ * 2. 在 *顶部* 包含了 ast.h. 只要 ast.h (正确地) 不包含
+ * common.h, 这就不会产生循环依赖.
+ * 3. Bison 2.x 会将这个 include 复制到 parser.tab.h 中, 
+ * 因此 %union 中的 'NodeList' 类型将是已知的.
+ */
+#include "common.h" // 包含 Scanner/ParserState 定义
+// #include "parser.tab.h" // <-- 保持移除. common.h 会包含它.
 
 // 全局变量的声明 (在 main.c 中定义)
-extern Scanner *scanner;
+extern ParserState *scanner;
 extern ASTNode *ast_root;
 
 /* 声明我们真正的词法分析器 (来自 lexer.re) */
-int real_yylex(YYSTYPE *yylval, Scanner *scanner);
+int yylex_internal(YYSTYPE *yylval, ParserState *state);
 
-/*
- * 包装函数：Bison 会调用这个 yylex(void)
- */
-int yylex(void)
-{
-    /* 访问 Bison 生成的全局 yylval */
-    extern YYSTYPE yylval; 
+// 声明 bison 调用的包装器 (yylex)
+int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 
-    /* 访问我们在 main.c 中定义的全局 scanner */
-    extern Scanner *scanner; 
 
-    /* 用正确的参数调用我们真正的词法分析器 */
-    return real_yylex(&yylval, scanner);
-}
+/* --- ASI 引擎 C 代码 (来自文档 5.3 节) --- */
+
 %}
 
-/* Bison 声明区 (来自 3.1 和 3.2 节) */
+/*
+ * 修复: 移除不被支持的 %code requires 块
+ */
+/*
+%code requires {
+    #include "ast.h" 
+}
+*/
+
+
+/* 启用纯净/可重入解析器 (Bison 2.x 语法) */
+%pure-parser
+
+/* 启用位置跟踪 (YYLTYPE) */
+%locations
+
+/* 定义传递给 yyparse 和 yylex 的额外参数 */
+%parse-param { ParserState* state }
+%lex-param { ParserState* state }
+
+/* (Bison 2.x 需要在 %{...%} 外部定义 %union) */
 %union {
     char *str_val;
-    struct ASTNode *node; // *** 更新：使用 ast.h 中的类型 ***
-    NodeList *list;
+    struct ASTNode *node;
+    NodeList *list; // <-- 'NodeList' 现在是已知的
 }
 
 /* 终结符 (Tokens) */
@@ -57,26 +78,62 @@ int yylex(void)
 
 /* Literals */
 %token TRUE_LITERAL FALSE_LITERAL NULL_LITERAL
+%token TOK_VIRTUAL_SEMICOLON
 
-/* 非终结符的类型 */
+/* * 非终结符的类型
+ * (修复了所有 <node> 和 <list> 的错误)
+ */
+
+/* 列表类型 <list> (NodeList*) */
 %type <list> statement_list_opt
 %type <list> statement_list
-%type <node> statement
+%type <list> variable_declaration_list_inner
+%type <list> property_list
+%type <list> element_list
+%type <list> arrow_parameter_list
+%type <list> identifier_list
+%type <list> method_definition_list
+%type <list> switch_case_list
+%type <list> case_statement_list
+%type <list> arguments
+%type <list> argument_list
+
+/* 节点类型 <node> (ASTNode*) */
 %type <node> Script
-%type <node> block_statement variable_statement expression_statement if_statement iteration_statement while_statement for_statement do_while_statement
+%type <node> statement
+%type <node> block_statement 
+%type <node> variable_statement 
+%type <node> expression_statement
+%type <node> if_statement 
+%type <node> iteration_statement 
+%type <node> while_statement 
+%type <node> for_statement 
+%type <node> do_while_statement
 %type <node> for_init
 %type <node> return_statement
 %type <node> function_declaration
-%type <list> variable_declaration_list_inner
 %type <node> variable_declaration
 %type <node> variable_declaration_list
-%type <node> expression assignment_expression conditional_expression
-%type <node> logical_or_expression logical_and_expression bitwise_or_expression
-%type <node> bitwise_xor_expression bitwise_and_expression equality_expression
-%type <node> relational_expression shift_expression additive_expression
-%type <node> multiplicative_expression unary_expression update_expression
-%type <node> left_hand_side_expression new_expression call_expression
-%type <node> member_expression primary_expression
+%type <node> expression 
+%type <node> assignment_expression 
+%type <node> conditional_expression
+%type <node> logical_or_expression 
+%type <node> logical_and_expression 
+%type <node> bitwise_or_expression
+%type <node> bitwise_xor_expression 
+%type <node> bitwise_and_expression 
+%type <node> equality_expression
+%type <node> relational_expression 
+%type <node> shift_expression 
+%type <node> additive_expression
+%type <node> multiplicative_expression 
+%type <node> unary_expression 
+%type <node> update_expression
+%type <node> left_hand_side_expression 
+%type <node> new_expression 
+%type <node> call_expression
+%type <node> member_expression 
+%type <node> primary_expression
 %type <node> expression_opt
 %type <node> break_statement
 %type <node> continue_statement
@@ -85,28 +142,20 @@ int yylex(void)
 %type <node> finally_clause
 %type <node> throw_statement
 %type <node> object_expression
-%type <list> property_list
 %type <node> property
 %type <node> property_name
 %type <node> array_expression
-%type <list> element_list
 %type <node> arrow_function_expression
-%type <list> arrow_parameter_list
-%type <list> identifier_list // 辅助规则
 %type <node> arrow_body
 %type <node> function_expression
 %type <node> class_declaration
 %type <node> class_body
-%type <list> method_definition_list
 %type <node> method_definition
 %type <node> switch_statement
-%type <list> switch_case_list
 %type <node> switch_case
-%type <list> case_statement_list
-%type <list> arguments
-%type <list> argument_list
 
-/* 优先级和结合性 (来自 3.2 节) */
+
+/* 优先级和结合性 */
 %left COMMA
 %right ASSIGN ADD_ASSIGN SUB_ASSIGN MUL_ASSIGN POWER_ASSIGN CONDITIONAL ARROW
 %left LOGICAL_OR NULLISH_COALESCING
@@ -129,89 +178,73 @@ int yylex(void)
 %start Script
 
 %%
-/* 文法规则区 (来自 3.3, 3.4, 4.4 节) */
+/* 文法规则区 (已删除所有末尾的多余分号) */
 
 Script:
     statement_list_opt
     { ast_root = create_script_node($1); }
-;
 
 statement_list_opt:
     /* empty */
-    { $$ = nodelist_create(); } // 返回一个空的 NodeList*
-| statement_list
-    { $$ = $1; } // $1 已经是一个 NodeList*
-;
+    { $$ = nodelist_create(); }
+|   statement_list
+    { $$ = $1; }
 
 statement_list:
     statement 
     { 
         $$ = nodelist_create(); 
         nodelist_append($$, $1); 
-        // (移除重置)
     }
 |   statement_list statement 
     { 
         nodelist_append($1, $2); 
         $$ = $1; 
-        // (移除重置)
     }
-;
 
 statement:
     block_statement
     { $$ = $1; }
-| variable_statement
+|   variable_statement
     { $$ = $1; }
-| if_statement
+|   if_statement
     { $$ = $1; }
-| return_statement
+|   return_statement
     { $$ = $1; }
-| expression_statement
+|   expression_statement
     { $$ = $1; }
-| function_declaration
+|   function_declaration
     { $$ = $1; }
-| iteration_statement   
+|   iteration_statement    
     { $$ = $1; }
-| break_statement
+|   break_statement
     { $$ = $1; }
-| continue_statement
+|   continue_statement
     { $$ = $1; }
-| switch_statement
+|   switch_statement
     { $$ = $1; }
-| try_statement
+|   try_statement
     { $$ = $1; }
-| throw_statement
+|   throw_statement
     { $$ = $1; }
-| class_declaration
+|   class_declaration
     { $$ = $1; }
-;
 
 block_statement:
     LBRACE statement_list_opt RBRACE
     { $$ = create_block_statement($2); }
-;
 
-/* ASI 规则的实现 (来自 3.4 和 4.3 节) */
-optional_semicolon:
+/*
+ * StatementTerminator 规则 (来自文档 4.2 节)
+ * 它匹配一个真实的分号或我们的虚拟分号。
+ */
+StatementTerminator:
     SEMICOLON
-    { extern Scanner *scanner; scanner->line_terminator_seen = false; } // 在此重置
-| /* empty */ 
-    {
-        extern Scanner *scanner;
-        if (!can_insert_semicolon(scanner)) {
-            yyerror("missing semicolon");
-            YYERROR;
-        }
-        // 无论 ASI 成功与否，标志都必须被“消耗”和重置
-        scanner->line_terminator_seen = false; // <-- 在此重置
-    }
-;
+|   TOK_VIRTUAL_SEMICOLON
 
 variable_statement:
-    variable_declaration_list optional_semicolon
+    variable_declaration_list StatementTerminator
     { $$ = $1; }
-;
 
 variable_declaration_list:
     LET variable_declaration_list_inner
@@ -220,10 +253,7 @@ variable_declaration_list:
     { $$ = create_declaration_list(DECL_CONST, $2); }
 |   VAR variable_declaration_list_inner
     { $$ = create_declaration_list(DECL_VAR, $2); }
-;
 
-// variable_declaration_list_inner 是一个新的辅助规则
-// 它负责构建 NodeList*
 variable_declaration_list_inner:
     variable_declaration
     {
@@ -235,47 +265,40 @@ variable_declaration_list_inner:
         nodelist_append($1, $3);
         $$ = $1;
     }
-;
 
 variable_declaration:
     IDENTIFIER
     { $$ = create_variable_declarator(create_identifier_node($1), NULL); }
 |   IDENTIFIER ASSIGN assignment_expression
     { $$ = create_variable_declarator(create_identifier_node($1), $3); }
-;
 
 if_statement:
     IF LPAREN expression RPAREN statement
     { $$ = create_if_statement($3, $5, NULL); }
-| IF LPAREN expression RPAREN statement ELSE statement
+|   IF LPAREN expression RPAREN statement ELSE statement
     { $$ = create_if_statement($3, $5, $7); }
-;
 
 expression_statement:
-    expression optional_semicolon
+    expression StatementTerminator
     { $$ = create_expression_statement($1); }
-;
 
 /* 受限产生式 (来自 4.4 节) */
 expression_opt:
     /* empty */
     { $$ = NULL; }
-| expression
+|   expression
     { $$ = $1; }
-;
 
 return_statement:
-    RETURN { scanner->restrict_new_line = true; } expression_opt optional_semicolon
+    RETURN { /* 'restrict_new_line' 标志现在由 ASI 包装器在 'last_token' 中处理 */ } 
+    expression_opt StatementTerminator
     { 
-        scanner->restrict_new_line = false; // 退出受限模式
         $$ = create_return_statement($3);
     }
-;
 
 function_declaration:
     FUNCTION IDENTIFIER arguments block_statement
     { $$ = create_function_declaration(create_identifier_node($2), $3, $4); }
-;
 
 iteration_statement:
     while_statement
@@ -284,81 +307,63 @@ iteration_statement:
     { $$ = $1; }
 |   do_while_statement
     { $$ = $1; }
-;
 
 while_statement:
     WHILE LPAREN expression RPAREN statement
     { $$ = create_while_statement($3, $5); }
-;
 
 for_statement:
     FOR LPAREN for_init SEMICOLON expression_opt SEMICOLON expression_opt RPAREN statement
     { $$ = create_for_statement($3, $5, $7, $9); }
-;
 
 // for_init 规则处理 for 循环的第一部分
 for_init:
     /* empty */
     { $$ = NULL; }
-|   variable_declaration_list // 例如: let i = 0, j = 1
+|   variable_declaration_list
     { $$ = $1; }
-|   expression              // 例如: i = 0, j = 0
+|   expression
     { $$ = $1; }
-;
 
 do_while_statement:
-    DO statement WHILE LPAREN expression RPAREN optional_semicolon
+    DO statement WHILE LPAREN expression RPAREN StatementTerminator
     { $$ = create_do_while_statement($2, $5); }
-;
 
 break_statement:
-    BREAK optional_semicolon
+    BREAK StatementTerminator
     { $$ = create_break_statement(); }
-;
 
 continue_statement:
-    CONTINUE optional_semicolon
+    CONTINUE StatementTerminator
     { $$ = create_continue_statement(); }
-;
 
 switch_statement:
     SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE
     { $$ = create_switch_statement($3, $6); }
-;
 
 try_statement:
-    // try { ... } catch (e) { ... }
     TRY block_statement catch_clause
     { $$ = create_try_statement($2, $3, NULL); }
-
-    // try { ... } finally { ... }
 |   TRY block_statement finally_clause
     { $$ = create_try_statement($2, NULL, $3); }
-
-    // try { ... } catch (e) { ... } finally { ... }
 |   TRY block_statement catch_clause finally_clause
     { $$ = create_try_statement($2, $3, $4); }
-;
 
 catch_clause:
     CATCH LPAREN IDENTIFIER RPAREN block_statement
     { $$ = create_catch_clause(create_identifier_node($3), $5); }
-;
 
 finally_clause:
     FINALLY block_statement
-    { $$ = $2; } // finally 子句只是一个 BlockStatement
-;
+    { $$ = $2; } 
 
 throw_statement:
-    THROW { scanner->restrict_new_line = true; } expression optional_semicolon
+    THROW { /* 'restrict_new_line' 标志现在由 ASI 包装器在 'last_token' 中处理 */ } 
+    expression StatementTerminator
     {
-        scanner->restrict_new_line = false; // 退出受限模式
         $$ = create_throw_statement($3);
     }
-;
 
-// switch_case_list 负责构建 SwitchCase 节点的 NodeList
 switch_case_list:
     /* empty */
     { $$ = nodelist_create(); }
@@ -367,15 +372,12 @@ switch_case_list:
         nodelist_append($1, $2);
         $$ = $1;
     }
-;
 
-// switch_case 匹配 'case ...:' 或 'default:'
 switch_case:
     CASE expression COLON case_statement_list
     { $$ = create_switch_case($2, $4); }
 |   DEFAULT COLON case_statement_list
     { $$ = create_switch_case(NULL, $3); }
-;
 
 case_statement_list:
     /* empty */
@@ -385,17 +387,17 @@ case_statement_list:
         nodelist_append($1, $2);
         $$ = $1;
     }
-;
 
-// arrow_parameter_list 匹配括号内的参数列表
+/* * 规则顺序修复：
+ * 'arrow_parameter_list' 必须定义在 'expression' 之前 
+ * 以解决 Reduce/Reduce 冲突。
+ */
 arrow_parameter_list:
     /* empty */
     { $$ = nodelist_create(); }
 |   identifier_list
     { $$ = $1; }
-;
 
-// identifier_list 辅助规则 (仅用于参数)
 identifier_list:
     IDENTIFIER
     {
@@ -407,32 +409,22 @@ identifier_list:
         nodelist_append($1, create_identifier_node($3));
         $$ = $1;
     }
-;
 
 function_expression:
-    // 案例 1: 匿名函数 function (...) { ... }
     FUNCTION arguments block_statement
     { $$ = create_function_expression(NULL, $2, $3); }
-
-    // 案例 2: 命名函数 function foo(...) { ... }
 |   FUNCTION IDENTIFIER arguments block_statement
     { $$ = create_function_expression(create_identifier_node($2), $3, $4); }
-;
 
 class_declaration:
-    // 案例 1: class MyClass { ... }
     CLASS IDENTIFIER class_body
     { $$ = create_class_declaration(create_identifier_node($2), NULL, $3); }
-
-    // 案例 2: class MyClass extends SuperClass { ... }
 |   CLASS IDENTIFIER EXTENDS assignment_expression class_body
     { $$ = create_class_declaration(create_identifier_node($2), $4, $5); }
-;
 
 class_body:
     LBRACE method_definition_list RBRACE
     { $$ = create_class_body($2); }
-;
 
 method_definition_list:
     /* empty */
@@ -442,248 +434,220 @@ method_definition_list:
         nodelist_append($1, $2);
         $$ = $1;
     }
-;
 
-// 一个方法定义
 method_definition:
-    // 案例 1: 普通方法 'myMethod() { ... }'
     property_name arguments block_statement
     {
         ASTNode* func_value = create_function_expression(NULL, $2, $3);
-        $$ = create_method_definition($1, func_value, false); // 传递 is_static = false
+        $$ = create_method_definition($1, func_value, false); 
     }
-
-    // 案例 2: 静态方法 'static myMethod() { ... }'
 |   STATIC property_name arguments block_statement
     {
         ASTNode* func_value = create_function_expression(NULL, $3, $4);
-        $$ = create_method_definition($2, func_value, true); // 传递 is_static = true
+        $$ = create_method_definition($2, func_value, true); 
     }
-;
 
 /* --- 表达式 (来自 3.3 节) --- */
 expression:
     assignment_expression
     { $$ = $1; }
-| expression COMMA assignment_expression
+|   expression COMMA assignment_expression
     { $$ = create_binary_expr(OP_COMMA, $1, $3); }
-;
 
 assignment_expression:
     conditional_expression
     { $$ = $1; }
-|   arrow_function_expression // <-- 在这里添加
+|   arrow_function_expression
     { $$ = $1; }
 |   left_hand_side_expression ASSIGN assignment_expression
     { $$ = create_assignment_expr(OP_ASSIGN, $1, $3); }
-;
 
 conditional_expression:
     logical_or_expression
     { $$ = $1; }
 |   logical_or_expression CONDITIONAL assignment_expression COLON assignment_expression
     { $$ = create_conditional_expression($1, $3, $5); }
-;
 
 logical_or_expression:
     logical_and_expression
     { $$ = $1; }
-| logical_or_expression LOGICAL_OR logical_and_expression
+|   logical_or_expression LOGICAL_OR logical_and_expression
     { $$ = create_binary_expr(OP_LOGICAL_OR, $1, $3); }
-;
 
 logical_and_expression:
     bitwise_or_expression
     { $$ = $1; }
-| logical_and_expression LOGICAL_AND bitwise_or_expression
+|   logical_and_expression LOGICAL_AND bitwise_or_expression
     { $$ = create_binary_expr(OP_LOGICAL_AND, $1, $3); }
-;
 
 bitwise_or_expression:
     bitwise_xor_expression
     { $$ = $1; }
-| bitwise_or_expression BIT_OR bitwise_xor_expression
+|   bitwise_or_expression BIT_OR bitwise_xor_expression
     { $$ = create_binary_expr(OP_BIT_OR, $1, $3); }
-;
 
 bitwise_xor_expression:
     bitwise_and_expression
     { $$ = $1; }
-| bitwise_xor_expression BIT_XOR bitwise_and_expression
+|   bitwise_xor_expression BIT_XOR bitwise_and_expression
     { $$ = create_binary_expr(OP_BIT_XOR, $1, $3); }
-;
 
 bitwise_and_expression:
     equality_expression
     { $$ = $1; }
-| bitwise_and_expression BIT_AND equality_expression
+|   bitwise_and_expression BIT_AND equality_expression
     { $$ = create_binary_expr(OP_BIT_AND, $1, $3); }
-;
 
 equality_expression:
     relational_expression
     { $$ = $1; }
-| equality_expression EQ relational_expression
+|   equality_expression EQ relational_expression
     { $$ = create_binary_expr(OP_EQ, $1, $3); }
-| equality_expression NE relational_expression
+|   equality_expression NE relational_expression
     { $$ = create_binary_expr(OP_NE, $1, $3); }
-| equality_expression STRICT_EQ relational_expression
+|   equality_expression STRICT_EQ relational_expression
     { $$ = create_binary_expr(OP_STRICT_EQ, $1, $3); }
-| equality_expression STRICT_NE relational_expression
+|   equality_expression STRICT_NE relational_expression
     { $$ = create_binary_expr(OP_STRICT_NE, $1, $3); }
-;
 
 relational_expression:
     shift_expression
     { $$ = $1; }
-| relational_expression LT shift_expression
+|   relational_expression LT shift_expression
     { $$ = create_binary_expr(OP_LT, $1, $3); }
-| relational_expression GT shift_expression
+|   relational_expression GT shift_expression
     { $$ = create_binary_expr(OP_GT, $1, $3); }
-| relational_expression LE shift_expression
+|   relational_expression LE shift_expression
     { $$ = create_binary_expr(OP_LE, $1, $3); }
-| relational_expression GE shift_expression
+|   relational_expression GE shift_expression
     { $$ = create_binary_expr(OP_GE, $1, $3); }
-| relational_expression IN shift_expression
+|   relational_expression IN shift_expression
     { $$ = create_binary_expr(OP_IN, $1, $3); }
-| relational_expression INSTANCEOF shift_expression
+|   relational_expression INSTANCEOF shift_expression
     { $$ = create_binary_expr(OP_INSTANCEOF, $1, $3); }
-;
 
 shift_expression:
     additive_expression
     { $$ = $1; }
-| shift_expression LSHIFT additive_expression
+|   shift_expression LSHIFT additive_expression
     { $$ = create_binary_expr(OP_LSHIFT, $1, $3); }
-| shift_expression RSHIFT additive_expression
+|   shift_expression RSHIFT additive_expression
     { $$ = create_binary_expr(OP_RSHIFT, $1, $3); }
-| shift_expression URSHIFT additive_expression
+|   shift_expression URSHIFT additive_expression
     { $$ = create_binary_expr(OP_URSHIFT, $1, $3); }
-;
 
 additive_expression:
     multiplicative_expression
     { $$ = $1; }
-| additive_expression PLUS multiplicative_expression
+|   additive_expression PLUS multiplicative_expression
     { $$ = create_binary_expr(OP_PLUS, $1, $3); }
-| additive_expression MINUS multiplicative_expression
+|   additive_expression MINUS multiplicative_expression
     { $$ = create_binary_expr(OP_MINUS, $1, $3); }
-;
 
 multiplicative_expression:
     unary_expression
     { $$ = $1; }
-| multiplicative_expression MUL unary_expression
+|   multiplicative_expression MUL unary_expression
     { $$ = create_binary_expr(OP_MUL, $1, $3); }
-| multiplicative_expression MOD unary_expression
+|   multiplicative_expression MOD unary_expression
     { $$ = create_binary_expr(OP_MOD, $1, $3); }
-| multiplicative_expression POWER unary_expression
+|   multiplicative_expression POWER unary_expression
     { $$ = create_binary_expr(OP_POWER, $1, $3); }
-;
 
 unary_expression:
     update_expression
     { $$ = $1; }
-| DELETE unary_expression
+|   DELETE unary_expression
     { $$ = create_unary_expr(OP_DELETE, $2, true); }
-| VOID unary_expression
+|   VOID unary_expression
     { $$ = create_unary_expr(OP_VOID, $2, true); }
-| TYPEOF unary_expression
+|   TYPEOF unary_expression
     { $$ = create_unary_expr(OP_TYPEOF, $2, true); }
-| INC unary_expression
+|   INC unary_expression
     { $$ = create_unary_expr(OP_INC, $2, true); }
-| DEC unary_expression
+|   DEC unary_expression
     { $$ = create_unary_expr(OP_DEC, $2, true); }
-| PLUS unary_expression
+|   PLUS unary_expression
     { $$ = create_unary_expr(OP_UNARY_PLUS, $2, true); }
-| MINUS unary_expression
+|   MINUS unary_expression
     { $$ = create_unary_expr(OP_UNARY_MINUS, $2, true); }
-| BIT_NOT unary_expression
+|   BIT_NOT unary_expression
     { $$ = create_unary_expr(OP_BIT_NOT, $2, true); }
-| NOT unary_expression
+|   NOT unary_expression
     { $$ = create_unary_expr(OP_NOT, $2, true); }
-/* ... AWAIT ... */
-;
 
 update_expression:
     left_hand_side_expression
     { $$ = $1; }
-| left_hand_side_expression INC %prec UPOSTFIX
+|   left_hand_side_expression INC %prec UPOSTFIX
     { $$ = create_unary_expr(OP_POST_INC, $1, false); }
-| left_hand_side_expression DEC %prec UPOSTFIX
+|   left_hand_side_expression DEC %prec UPOSTFIX
     { $$ = create_unary_expr(OP_POST_DEC, $1, false); }
-;
 
 left_hand_side_expression:
     new_expression
     { $$ = $1; }
-| call_expression
+|   call_expression
     { $$ = $1; }
-;
 
 new_expression:
     member_expression
     { $$ = $1; }
-|   NEW new_expression // 处理: new MyClass (无括号)
+|   NEW new_expression
     { $$ = create_new_expression($2, NULL); }
-;
 
 call_expression:
     member_expression arguments
     { $$ = create_call_expression($1, $2); }
-|   NEW new_expression arguments // 处理: new MyClass() (带括号)
+|   NEW new_expression arguments 
     { $$ = create_new_expression($2, $3); }
-;
 
 member_expression:
     primary_expression
     { $$ = $1; }
-| member_expression LBRACK expression RBRACK
+|   member_expression LBRACK expression RBRACK
     { $$ = create_member_access($1, $3, true); }
-| member_expression DOT IDENTIFIER
+|   member_expression DOT IDENTIFIER
     { $$ = create_member_access($1, create_identifier_node($3), false); }
-;
 
 arguments:
     LPAREN RPAREN
-    { $$ = nodelist_create(); } // Return a new empty list
+    { $$ = nodelist_create(); } 
 |   LPAREN argument_list RPAREN
-    { $$ = $2; }               // Return the list from argument_list
-;
+    { $$ = $2; }               
 
 argument_list:
     assignment_expression
     { 
-        $$ = nodelist_create(); // Create a new list
-        nodelist_append($$, $1);  // Add the first argument
+        $$ = nodelist_create(); 
+        nodelist_append($$, $1);  
     } 
 |   argument_list COMMA assignment_expression
     { 
-        nodelist_append($1, $3);  // Add the next argument to the existing list
-        $$ = $1;                  // Return the modified list
+        nodelist_append($1, $3);  
+        $$ = $1;                  
     }
-;
 
 primary_expression:
-THIS
+    THIS
     { $$ = create_this_node(); }
-| IDENTIFIER
+|   IDENTIFIER
     { $$ = create_identifier_node($1); }
-| NUMERIC_LITERAL
+|   NUMERIC_LITERAL
     { $$ = create_literal_node(LITERAL_NUMBER, $1); }
-| STRING_LITERAL
+|   STRING_LITERAL
     { $$ = create_literal_node(LITERAL_STRING, $1); }
-| TRUE_LITERAL
+|   TRUE_LITERAL
     { $$ = create_literal_node(LITERAL_TRUE, strdup("true")); }
-| FALSE_LITERAL
+|   FALSE_LITERAL
     { $$ = create_literal_node(LITERAL_FALSE, strdup("false")); }
-| NULL_LITERAL
+|   NULL_LITERAL
     { $$ = create_literal_node(LITERAL_NULL, strdup("null")); }
-| LPAREN expression RPAREN
-    { $$ = $2; } // 直接传递括号内表达式的节点
-| object_expression
+|   LPAREN expression RPAREN
+    { $$ = $2; } 
+|   object_expression
     { $$ = $1; }
-| array_expression
+|   array_expression
     { $$ = $1; }
 |   LPAREN arrow_parameter_list RPAREN ARROW arrow_body
     {
@@ -694,19 +658,13 @@ THIS
     { $$ = $1; }
 |   SUPER
     { $$ = create_super_node(); }
-;
 
 object_expression:
-    // 空对象 {}
     LBRACE RBRACE
     { $$ = create_object_expression(nodelist_create()); }
-
-    // { a: 1, b: 2 }
 |   LBRACE property_list RBRACE
     { $$ = create_object_expression($2); }
-;
 
-// property_list 负责构建属性的 NodeList
 property_list:
     property
     {
@@ -718,16 +676,11 @@ property_list:
         nodelist_append($1, $3);
         $$ = $1;
     }
-;
 
-// property 匹配 'key: value'
 property:
     property_name COLON assignment_expression
     { $$ = create_property($1, $3); }
-;
 
-// property_name 匹配对象的键 (key)
-// ESTree 允许标识符、字符串或数字作为键
 property_name:
     IDENTIFIER
     { $$ = create_identifier_node($1); }
@@ -735,20 +688,13 @@ property_name:
     { $$ = create_literal_node(LITERAL_STRING, $1); }
 |   NUMERIC_LITERAL
     { $$ = create_literal_node(LITERAL_NUMBER, $1); }
-;
 
 array_expression:
-    // 空数组 []
     LBRACK RBRACK
     { $$ = create_array_expression(nodelist_create()); }
-
-    // [ 1, 2, 3 ]
 |   LBRACK element_list RBRACK
     { $$ = create_array_expression($2); }
-;
 
-// element_list 负责构建元素的 NodeList
-// (这和 argument_list 的逻辑几乎一样)
 element_list:
     assignment_expression
     {
@@ -760,12 +706,8 @@ element_list:
         nodelist_append($1, $3);
         $$ = $1;
     }
-;
 
-//arrowfunction表达式相关代码
 arrow_function_expression:
-    // 案例 1: 单个参数，无括号
-    // a => a + 1
     IDENTIFIER ARROW arrow_body
     {
         NodeList *params = nodelist_create();
@@ -773,15 +715,153 @@ arrow_function_expression:
         bool is_expression_body = ($3->type != NODE_BLOCK_STATEMENT);
         $$ = create_arrow_function_expression(params, $3, is_expression_body);
     }
-;
 
-// arrow_body 匹配函数体
 arrow_body:
     block_statement
     { $$ = $1; }
-|   logical_or_expression // <-- 修复：打破循环
+|   logical_or_expression
     { $$ = $1; }
-;
+
 %%
-/* 附加 C 代码区 */
-/* (main 和 yyerror 已移至 main.c) */
+/* 辅助函数：是否为受限关键字？ */
+static bool is_restricted_keyword(int token) {
+    switch (token) {
+        case RETURN:
+        case BREAK:
+        case CONTINUE:
+        case THROW:
+        case YIELD: 
+        case AWAIT: 
+            return true;
+        default:
+            return false;
+    }
+}
+
+/* 辅助函数：此标记是否会“冒犯”一个表达式？ */
+static bool is_offending_token(int token) {
+    // 白名单策略：只有这些标记可以合法地跟在一个表达式后面
+    switch (token) {
+        case '(':
+        case '[':
+        case '.':
+        case '+':
+        case '-':
+        case '*':
+        case '%':
+        case '/':
+        case '?':
+        case ':':
+        case ',':
+        case POWER:
+        case LT:
+        case GT:
+        case LE:
+        case GE:
+        case EQ:
+        case NE:
+        case STRICT_EQ:
+        case STRICT_NE:
+        case LOGICAL_AND:
+        case LOGICAL_OR:
+        case NULLISH_COALESCING:
+        case LSHIFT:
+        case RSHIFT:
+        case URSHIFT:
+        case BIT_AND:
+        case BIT_OR:
+        case BIT_XOR:
+        // 修复: = 和 ...= 赋值操作符
+        // 它们是二元操作符, 不应该触发 ASI
+        case ASSIGN:
+        case ADD_ASSIGN:
+        case SUB_ASSIGN:
+        case MUL_ASSIGN:
+        case POWER_ASSIGN:
+            return false; // 不是冒犯性标记
+
+        // (其他所有标记都是“冒犯性”的)
+        default:
+            return true;
+    }
+}
+
+/* yylex 包装器 (ASI 引擎) */
+int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state) {
+    
+    /* * --- 修复：更新位置跟踪 (Bison %locations) ---
+     * 在我们做任何事情之前，更新 yyllocp。
+     * 这是一个基本的实现；更复杂的实现会跟踪列。
+     */
+    yyllocp->first_line = state->line;
+    yyllocp->last_line = state->line;
+
+    // 1. 检查缓冲区
+    if (state->has_buffered_token) {
+        state->has_buffered_token = false;
+        state->last_token = state->buffered_token;
+        
+        *yylvalp = state->buffered_yylval; // <--- 修复 1: 恢复保存的值
+        memset(&state->buffered_yylval, 0, sizeof(YYSTYPE)); // 清空缓冲区
+        
+        return state->buffered_token;
+    }
+
+    // 2. 获取下一个“原始”标记
+    int next_token = yylex_internal(yylvalp, state);
+    
+    /* * 在我们返回之前，再次更新 yyllocp 的 "last_line" 
+     * 因为 yylex_internal 可能已经改变了 state->line 
+     */
+    yyllocp->last_line = state->line;
+
+
+    // 3. 受限产生式检查
+    // (如果上一个 token 是受限的，并且我们看到了换行)
+    if (is_restricted_keyword(state->last_token) && state->has_seen_newline) {
+        state->buffered_token = next_token;
+        state->buffered_yylval = *yylvalp; // <--- 修复 2: 保存 yylval
+        state->has_buffered_token = true;
+        state->has_seen_newline = false; // “消耗”换行符
+        state->last_token = TOK_VIRTUAL_SEMICOLON;
+        memset(yylvalp, 0, sizeof(YYSTYPE));
+        return TOK_VIRTUAL_SEMICOLON;
+    }
+
+    // 4. 通用 ASI 规则 1, 2, 3
+    bool asi_rule_1 = state->has_seen_newline && is_offending_token(next_token);
+    bool asi_rule_2 = (next_token == RBRACE); // '}' 总是触发
+    bool asi_rule_3 = (next_token == 0);      // 0 是 EOF (文件结尾)
+    
+    if (asi_rule_1 || asi_rule_2 || asi_rule_3) {
+
+        // ASI 例外：不能插入分号以创建“空语句” 
+        // 如果上一个标记是分号或 {，或者我们在文件开头 (0)，
+        // 那么插入分号将创建一个空语句，这是不允许的。
+        if (state->last_token == SEMICOLON || 
+            state->last_token == TOK_VIRTUAL_SEMICOLON ||
+            state->last_token == LBRACE || // '}' (RBRACE) 已由 asi_rule_2 处理
+            state->last_token == 0) // 0 是 EOF/文件开头
+        {
+            // 不执行 ASI，继续（这将导致下一轮的 next_token 被正常处理）
+        }
+        else {
+            // (我们尚未实现 'for' 循环状态，所以跳过)
+
+            // 插入虚拟分号
+            state->buffered_token = next_token;
+            state->buffered_yylval = *yylvalp; // <--- 修复 3: 保存 yylval
+            state->has_buffered_token = true;
+            state->has_seen_newline = false; // “消耗”换行符
+            state->last_token = TOK_VIRTUAL_SEMICOLON;
+
+            memset(yylvalp, 0, sizeof(YYSTYPE));
+            return TOK_VIRTUAL_SEMICOLON;
+        }
+    }
+
+    // 5. 无 ASI：正常返回
+    state->has_seen_newline = false; 
+    state->last_token = next_token;  
+    return next_token;
+}

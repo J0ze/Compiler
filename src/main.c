@@ -1,14 +1,16 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>     // <-- 修复 1: 为 memset 添加
 #include "common.h"
 #include "ast.h"
+#include "parser.tab.h" // <-- 修复 2: 为 YYSTYPE 和 yyparse 原型添加
 
 // 定义 parser.y 中声明的全局变量
-Scanner *scanner;
+ParserState *scanner;
 ASTNode *ast_root;
 
-// yyparse() 是由 Bison 生成的
-extern int yyparse();
+// yyparse() 的原型现在在 parser.tab.h 中
+// extern int yyparse(); // <-- 修复 3: 移除这个不正确的声明
 
 // main 函数
 int main(int argc, char **argv) {
@@ -43,22 +45,27 @@ int main(int argc, char **argv) {
     buffer[size] = 0; // NULL 终止，re2c 的 $ 规则需要
     fclose(fp);
 
-    // 初始化 Scanner
-    Scanner s;
+    // 初始化 ParserState
+    ParserState s;
     s.cursor = buffer;
     s.limit = buffer + size;
-    s.marker = buffer; // re2c 需要 marker
+    s.marker = buffer;
     s.line = 1;
-    s.line_terminator_seen = false;
-    s.restrict_new_line = false;
+
+    // 初始化 ASI 状态
+    s.has_seen_newline = false; 
+    s.last_token = 0;
+    s.buffered_token = 0;
+    memset(&s.buffered_yylval, 0, sizeof(YYSTYPE)); // <-- 这一行现在可以工作了
+    s.has_buffered_token = false;
     
     // 设置全局扫描器指针
     scanner = &s;
     ast_root = NULL;
 
     // 调用解析器
-    int result = yyparse();
-
+    int result = yyparse(scanner); // <-- 这一行现在可以工作了
+    
     if (result == 0) {
         printf("Parse successful!\n");
         printf("--- AST ---\n");
@@ -76,6 +83,8 @@ int main(int argc, char **argv) {
 }
 
 // 错误报告函数 (parser.y 需要)
-void yyerror(const char *s){
-    fprintf(stderr, "Parse error: %s at line %d\n", s, scanner ? scanner->line : -1);
+// #include "parser.tab.h" // <-- 修复 4: 已经移到顶部，这里不再需要
+
+void yyerror(YYLTYPE *yyllocp, ParserState *state, const char *s) {
+    fprintf(stderr, "Parse error: %s at line %d\n", s, yyllocp ? yyllocp->first_line : (state ? state->line : -1));
 }

@@ -1,8 +1,6 @@
 #ifndef AST_H
 #define AST_H
 
-#include "common.h"
-
 // AST 节点类型
 typedef enum {
     NODE_SCRIPT,              // 顶层脚本 (语句列表的容器)
@@ -70,7 +68,6 @@ typedef enum {
     OP_LSHIFT, OP_RSHIFT, OP_URSHIFT,
     OP_PLUS, OP_MINUS,
     OP_MUL, OP_MOD, OP_POWER
-    // ... 可根据需要添加其他赋值操作符 ...
 } BinaryOpType;
 
 // 方法定义类型
@@ -357,7 +354,6 @@ ASTNode* create_call_expression(ASTNode *callee, NodeList *arguments);
 ASTNode* create_member_access(ASTNode *object, ASTNode *property, bool computed);
 
 // ASI 辅助函数
-bool can_insert_semicolon(Scanner *scanner);
 NodeList* nodelist_create(void);
 void nodelist_append(NodeList* list, ASTNode* node);
 void nodelist_free(NodeList* list); // 释放列表及其中的所有节点

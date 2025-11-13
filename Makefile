@@ -41,6 +41,18 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -I$(BUILD_DIR) -c $< -o $@
 
+# (新规则) main.o 的特定规则
+# 它也需要 parser.tab.h，所以我们添加 $(PARSER_H) 作为依赖
+$(BUILD_DIR)/main.o: $(SRC_DIR)/main.c $(PARSER_H)
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -I$(BUILD_DIR) -c $(SRC_DIR)/main.c -o $@
+
+# (新规则) ast.o 的特定规则
+# 它需要 parser.tab.h，所以我们添加 $(PARSER_H) 作为依赖
+$(BUILD_DIR)/ast.o: $(SRC_DIR)/ast.c $(PARSER_H)
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -I$(BUILD_DIR) -c $(SRC_DIR)/ast.c -o $@
+
 # 编译生成的词法分析器 C 文件
 $(BUILD_DIR)/lexer.o: $(LEXER_C) $(PARSER_H)
 	$(CC) $(CFLAGS) -Wno-self-assign -I$(INCLUDE_DIR) -I$(BUILD_DIR) -c $< -o $@
@@ -55,7 +67,7 @@ $(LEXER_C): $(RE_SOURCE)
 	$(RE2C) -W -T $(RE2CFLAGS) $@ $<
 
 # 从 .y 生成 .c 和 .h
-$(PARSER_C) $(PARSER_H): $(Y_SOURCE)
+$(PARSER_C) $(PARSER_H): $(Y_SOURCE) $(INCLUDE_DIR)/ast.h
 	@mkdir -p $(@D)
 	$(BISON) $(BISONFLAGS) --output=$(PARSER_C) $<
 
