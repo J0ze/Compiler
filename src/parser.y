@@ -140,6 +140,7 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 %type <node> class_declaration
 %type <node> class_body
 %type <node> method_definition
+%type <node> function_name_opt
 %type <node> switch_statement
 %type <node> switch_case
 %type <node> empty_statement /* <-- 修复: 为空语句添加类型 */
@@ -415,9 +416,13 @@ identifier_list:
         $$ = $1;
     }
 
+function_name_opt:
+    /* empty */ { $$ = NULL; }
+|   IDENTIFIER { $$ = create_identifier_node($1); }
+
 function_expression:
-    FUNCTION arguments block_statement
-    { $$ = create_function_expression(NULL, $2, $3); }
+    FUNCTION function_name_opt arguments block_statement
+    { $$ = create_function_expression($2, $3, $4); }
 
 class_declaration:
     CLASS IDENTIFIER class_body
