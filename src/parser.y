@@ -835,18 +835,13 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state) {
 
     // 4. 通用 ASI 规则 1, 2, 3
     bool asi_rule_1 = state->has_seen_newline && is_offending_token(next_token);
-    bool asi_rule_2 = (next_token == RBRACE); // '}' 总是触发
     bool asi_rule_3 = (next_token == 0);      // 0 是 EOF (文件结尾)
-    
-    if (asi_rule_1 || asi_rule_2 || asi_rule_3) {
-
-        // ASI 例外：不能插入分号以创建“空语句” 
-        // 如果上一个标记是分号或 {，或者我们在文件开头 (0)，
-        // 那么插入分号将创建一个空语句，这是不允许的。
+    if (asi_rule_1 || asi_rule_3) {
         if (state->last_token == SEMICOLON || 
             state->last_token == TOK_VIRTUAL_SEMICOLON ||
-            state->last_token == LBRACE || // '}' (RBRACE) 已由 asi_rule_2 处理
-            state->last_token == 0) // 0 是 EOF/文件开头
+            state->last_token == LBRACE ||
+            state->last_token == 0 ||
+            state->last_token == RBRACE)
         {
             // 不执行 ASI，继续（这将导致下一轮的 next_token 被正常处理）
         }
@@ -864,7 +859,6 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state) {
             return TOK_VIRTUAL_SEMICOLON;
         }
     }
-
     // 5. 无 ASI：正常返回
     state->has_seen_newline = false; 
     state->last_token = next_token;  

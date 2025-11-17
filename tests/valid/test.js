@@ -48,11 +48,9 @@ function myTest() {
     } finally {
         a = a + 10; // a 变为 61
     }
-    // a 在这里应该是 61
-
     return a > 40 ? 1 : 0;
 }
-let d = new myTest();   // 测试 new MyClass()
+let d = new myTest();
 myTest();
 class Person {
     constructor(name) {
