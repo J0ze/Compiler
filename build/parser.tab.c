@@ -3193,14 +3193,11 @@ static bool is_offending_token(int token) {
         case BIT_AND:
         case BIT_OR:
         case BIT_XOR:
-        // 修复: = 和 ...= 赋值操作符
-        // 它们是二元操作符, 不应该触发 ASI
         case ASSIGN:
         case ADD_ASSIGN:
         case SUB_ASSIGN:
         case MUL_ASSIGN:
         case POWER_ASSIGN:
-            return false;
         case IDENTIFIER: 
         case NUMERIC_LITERAL:
         case STRING_LITERAL:
@@ -3210,6 +3207,22 @@ static bool is_offending_token(int token) {
         case RPAREN:
         case RBRACK:
         case RBRACE:
+        case FUNCTION:
+        case CLASS:
+        case IF:
+        case FOR:
+        case WHILE:
+        case DO:
+        case SWITCH:
+        case TRY:
+        case RETURN:
+        case BREAK:
+        case CONTINUE:
+        case THROW:
+        case STATIC:
+        case CONST:
+        case LET:
+        case VAR:
             return false;
         default:
             return true;
