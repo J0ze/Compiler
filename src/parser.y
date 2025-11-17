@@ -132,6 +132,7 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 %type <node> object_expression
 %type <node> property
 %type <node> property_name
+%type <node> literal_or_identifier
 %type <node> array_expression
 %type <node> arrow_function_expression
 %type <node> arrow_body
@@ -388,10 +389,14 @@ case_statement_list:
         $$ = $1;
     }
 
-/* * 规则顺序修复：
- * 'arrow_parameter_list' 必须定义在 'expression' 之前 
- * 以解决 Reduce/Reduce 冲突。
- */
+literal_or_identifier:
+    IDENTIFIER
+    { $$ = create_identifier_node($1); }
+|   NUMERIC_LITERAL
+    { $$ = create_literal_node(LITERAL_NUMBER, $1); }
+|   STRING_LITERAL
+    { $$ = create_literal_node(LITERAL_STRING, $1); }
+
 arrow_parameter_list:
     /* empty */
     { $$ = nodelist_create(); }
@@ -413,8 +418,6 @@ identifier_list:
 function_expression:
     FUNCTION arguments block_statement
     { $$ = create_function_expression(NULL, $2, $3); }
-|   FUNCTION IDENTIFIER arguments block_statement
-    { $$ = create_function_expression(create_identifier_node($2), $3, $4); }
 
 class_declaration:
     CLASS IDENTIFIER class_body
@@ -636,12 +639,8 @@ argument_list:
 primary_expression:
     THIS
     { $$ = create_this_node(); }
-|   IDENTIFIER
-    { $$ = create_identifier_node($1); }
-|   NUMERIC_LITERAL
-    { $$ = create_literal_node(LITERAL_NUMBER, $1); }
-|   STRING_LITERAL
-    { $$ = create_literal_node(LITERAL_STRING, $1); }
+|   literal_or_identifier 
+    { $$ = $1; }
 |   TRUE_LITERAL
     { $$ = create_literal_node(LITERAL_TRUE, strdup("true")); }
 |   FALSE_LITERAL
@@ -654,11 +653,6 @@ primary_expression:
     { $$ = $1; }
 |   array_expression
     { $$ = $1; }
-|   LPAREN arrow_parameter_list RPAREN ARROW arrow_body
-    {
-        bool is_expression_body = ($5->type != NODE_BLOCK_STATEMENT);
-        $$ = create_arrow_function_expression($2, $5, is_expression_body);
-    }
 |   function_expression
     { $$ = $1; }
 |   SUPER
@@ -687,12 +681,8 @@ property:
     { $$ = create_property($1, $3); }
 
 property_name:
-    IDENTIFIER
-    { $$ = create_identifier_node($1); }
-|   STRING_LITERAL
-    { $$ = create_literal_node(LITERAL_STRING, $1); }
-|   NUMERIC_LITERAL
-    { $$ = create_literal_node(LITERAL_NUMBER, $1); }
+    literal_or_identifier
+    { $$ = $1; }
 
 array_expression:
     LBRACK RBRACK
@@ -713,6 +703,13 @@ element_list:
     }
 
 arrow_function_expression:
+    /* 规则 1: (a, b) => ... */
+    LPAREN arrow_parameter_list RPAREN ARROW arrow_body
+    {
+        bool is_expression_body = ($5->type != NODE_BLOCK_STATEMENT);
+        $$ = create_arrow_function_expression($2, $5, is_expression_body);
+    }
+|   /* 规则 2: a => ... */
     IDENTIFIER ARROW arrow_body
     {
         NodeList *params = nodelist_create();
@@ -800,8 +797,6 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state) {
      */
     yyllocp->first_line = state->line;
     yyllocp->last_line = state->line;
-
-    // 1. 检查缓冲区
     if (state->has_buffered_token) {
         state->has_buffered_token = false;
         state->last_token = state->buffered_token;
@@ -840,8 +835,7 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state) {
         if (state->last_token == SEMICOLON || 
             state->last_token == TOK_VIRTUAL_SEMICOLON ||
             state->last_token == LBRACE ||
-            state->last_token == 0 ||
-            state->last_token == RBRACE)
+            state->last_token == 0)
         {
             // 不执行 ASI，继续（这将导致下一轮的 next_token 被正常处理）
         }
@@ -859,7 +853,6 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state) {
             return TOK_VIRTUAL_SEMICOLON;
         }
     }
-    // 5. 无 ASI：正常返回
     state->has_seen_newline = false; 
     state->last_token = next_token;  
     return next_token;

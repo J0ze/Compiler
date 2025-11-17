@@ -6,7 +6,7 @@ LDFLAGS =
 
 # 工具定义
 BISON = bison
-BISONFLAGS = -d# -d 生成.tab.h, -v 生成详细报告
+BISONFLAGS = -d -v# -d 生成.tab.h, -v 生成详细报告
 RE2C = re2c
 RE2CFLAGS = -o
 
