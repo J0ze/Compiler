@@ -56,11 +56,9 @@ class Person {
     constructor(name) {
         this.name = name;
     }
-
     greet() {
         return "Hello";
     }
-
     static staticGreet() {
         return "Static Hello";
     }

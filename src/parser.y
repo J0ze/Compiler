@@ -132,7 +132,6 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 %type <node> object_expression
 %type <node> property
 %type <node> property_name
-%type <node> literal_or_identifier
 %type <node> array_expression
 %type <node> arrow_function_expression
 %type <node> arrow_body
@@ -390,14 +389,6 @@ case_statement_list:
         $$ = $1;
     }
 
-literal_or_identifier:
-    IDENTIFIER
-    { $$ = create_identifier_node($1); }
-|   NUMERIC_LITERAL
-    { $$ = create_literal_node(LITERAL_NUMBER, $1); }
-|   STRING_LITERAL
-    { $$ = create_literal_node(LITERAL_STRING, $1); }
-
 arrow_parameter_list:
     /* empty */
     { $$ = nodelist_create(); }
@@ -644,8 +635,12 @@ argument_list:
 primary_expression:
     THIS
     { $$ = create_this_node(); }
-|   literal_or_identifier 
-    { $$ = $1; }
+|   IDENTIFIER  /* 直接使用 IDENTIFIER */
+    { $$ = create_identifier_node($1); }
+|   NUMERIC_LITERAL  /* 直接使用 NUMERIC_LITERAL */
+    { $$ = create_literal_node(LITERAL_NUMBER, $1); }
+|   STRING_LITERAL  /* 直接使用 STRING_LITERAL */
+    { $$ = create_literal_node(LITERAL_STRING, $1); }
 |   TRUE_LITERAL
     { $$ = create_literal_node(LITERAL_TRUE, strdup("true")); }
 |   FALSE_LITERAL
@@ -686,8 +681,12 @@ property:
     { $$ = create_property($1, $3); }
 
 property_name:
-    literal_or_identifier
-    { $$ = $1; }
+    IDENTIFIER
+    { $$ = create_identifier_node($1); }
+|   NUMERIC_LITERAL
+    { $$ = create_literal_node(LITERAL_NUMBER, $1); }
+|   STRING_LITERAL
+    { $$ = create_literal_node(LITERAL_STRING, $1); }
 
 array_expression:
     LBRACK RBRACK
@@ -785,9 +784,17 @@ static bool is_offending_token(int token) {
         case SUB_ASSIGN:
         case MUL_ASSIGN:
         case POWER_ASSIGN:
-            return false; // 不是冒犯性标记
-
-        // (其他所有标记都是“冒犯性”的)
+            return false;
+        case IDENTIFIER: 
+        case NUMERIC_LITERAL:
+        case STRING_LITERAL:
+        case TRUE_LITERAL:
+        case FALSE_LITERAL:
+        case NULL_LITERAL:
+        case RPAREN:
+        case RBRACK:
+        case RBRACE:
+            return false;
         default:
             return true;
     }
