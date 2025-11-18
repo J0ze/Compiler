@@ -1,13 +1,13 @@
 #ifndef AST_H
 #define AST_H
 #include <stdbool.h>
+
 // AST 节点类型
 typedef enum {
-    NODE_SCRIPT,              // 顶层脚本 (语句列表的容器)
-    NODE_BLOCK_STATEMENT,     // { ... }
-    NODE_STATEMENT_LIST,      // (文章中 create_statement_list 暗示的类型，我将其合并到 NODE_SCRIPT)
-    NODE_VARIABLE_DECLARATION,// let, const, var
-    NODE_VARIABLE_DECLARATOR, // foo, bar = 1
+    NODE_SCRIPT,
+    NODE_BLOCK_STATEMENT,
+    NODE_VARIABLE_DECLARATION,
+    NODE_VARIABLE_DECLARATOR,
     NODE_IDENTIFIER,
     NODE_LITERAL,
     NODE_THIS_EXPRESSION,
@@ -15,8 +15,8 @@ typedef enum {
     NODE_WHILE_STATEMENT,
     NODE_DO_WHILE_STATEMENT,
     NODE_FOR_STATEMENT,
-    NODE_FOR_IN_STATEMENT,    // [新增] for (x in y)
-    NODE_FOR_OF_STATEMENT,    // [新增] for (x of y)
+    NODE_FOR_IN_STATEMENT,
+    NODE_FOR_OF_STATEMENT,
     NODE_BREAK_STATEMENT,
     NODE_CONTINUE_STATEMENT,
     NODE_SWITCH_STATEMENT,
@@ -47,23 +47,21 @@ typedef enum {
     NODE_UNARY_EXPRESSION,
     NODE_CALL_EXPRESSION,
     NODE_MEMBER_EXPRESSION,
+    NODE_SPREAD_ELEMENT,
+    NODE_OBJECT_PATTERN,
+    NODE_ARRAY_PATTERN,
+    NODE_ASSIGNMENT_PATTERN,
+    NODE_REST_ELEMENT,
+    NODE_LABELLED_STATEMENT,
+    NODE_UNKNOWN /* [新增] 用于容错的未知节点 */
 } NodeType;
 
 // 变量声明类型
-typedef enum {
-    DECL_LET,
-    DECL_CONST,
-    DECL_VAR
-} DeclarationType;
+typedef enum { DECL_LET, DECL_CONST, DECL_VAR } DeclarationType;
 
 // 字面量类型
 typedef enum {
-    LITERAL_NUMBER,
-    LITERAL_STRING,
-    LITERAL_TRUE,
-    LITERAL_FALSE,
-    LITERAL_NULL,
-    LITERAL_REGEX // [新增] 正则表达式
+    LITERAL_NUMBER, LITERAL_STRING, LITERAL_TRUE, LITERAL_FALSE, LITERAL_NULL, LITERAL_REGEX
 } LiteralType;
 
 // 二元操作符
@@ -73,300 +71,97 @@ typedef enum {
     OP_EQ, OP_NE, OP_STRICT_EQ, OP_STRICT_NE,
     OP_LT, OP_LE, OP_GT, OP_GE, OP_IN, OP_INSTANCEOF,
     OP_LSHIFT, OP_RSHIFT, OP_URSHIFT,
-    OP_PLUS, OP_MINUS,
-    OP_MUL, OP_MOD, OP_POWER,
-    OP_DIV // [新增] 除法
+    OP_PLUS, OP_MINUS, OP_MUL, OP_MOD, OP_POWER, OP_DIV
 } BinaryOpType;
 
-// 方法定义类型
+// 方法/属性定义类型
 typedef enum {
-    KIND_CONSTRUCTOR,
-    KIND_METHOD,
-    KIND_GET, // (为未来准备)
-    KIND_SET  // (为未来准备)
+    KIND_INIT, KIND_CONSTRUCTOR, KIND_METHOD, KIND_GET, KIND_SET
 } MethodKind;
 
 // 一元操作符
 typedef enum {
     OP_DELETE, OP_VOID, OP_TYPEOF,
-    OP_INC, OP_DEC, // (前缀)
-    OP_POST_INC, OP_POST_DEC, // (后缀)
-    OP_NOT, OP_BIT_NOT,
-    OP_UNARY_PLUS, OP_UNARY_MINUS
+    OP_INC, OP_DEC, OP_POST_INC, OP_POST_DEC,
+    OP_NOT, OP_BIT_NOT, OP_UNARY_PLUS, OP_UNARY_MINUS
 } UnaryOpType;
 
 typedef struct {
-    struct ASTNode **nodes;  // 指向 ASTNode* 指针数组的指针
-    int size;         // 当前有多少个节点
-    int capacity;     // 已分配的容量
+    struct ASTNode **nodes;
+    int size;
+    int capacity;
 } NodeList;
 
 // 抽象语法树 (AST) 节点
 typedef struct ASTNode {
     NodeType type;
-    int line;                // 节点所在的行号
-    struct ASTNode *next;    // 用于连接列表中的节点 (如语句、声明)
+    int line;
+    struct ASTNode *next;
 
     union {
-        // NODE_SCRIPT, NODE_BLOCK_STATEMENT
-        struct {
-            NodeList *body;// 指向语句列表的第一个节点
-        } script;
-
-        // NODE_VARIABLE_DECLARATION
-        struct {
-            DeclarationType decl_type;
-            NodeList *declarations; // 指向声明符列表的第一个节点
-        } var_decl;
-
-        // NODE_VARIABLE_DECLARATOR
-        struct {
-            struct ASTNode *id;   // IDENTIFIER
-            struct ASTNode *init; // (可选) assignment_expression
-        } var_declarator;
-
-        // NODE_IDENTIFIER
-        struct {
-            char *name;
-        } identifier;
-
-        // NODE_LITERAL
-        struct {
-            LiteralType type;
-            char *value;
-        } literal;
-
-        // NODE_IF_STATEMENT
-        struct {
-            struct ASTNode *test;
-            struct ASTNode *consequent;
-            struct ASTNode *alternate; // (可选) else
-        } if_stmt;
-
-        // NODE_WHILE_STATEMENT
-        struct {
-            struct ASTNode *test;
-            struct ASTNode *body;
-        } while_stmt;
-
-        // NODE_DO_WHILE_STATEMENT
-        struct {
-            struct ASTNode *body;
-            struct ASTNode *test;
-        } do_while_stmt;
-
-        // NODE_FOR_STATEMENT
-        struct {
-            struct ASTNode *init;     // 可以是 VariableDeclaration, Expression, 或 NULL
-            struct ASTNode *test;     // 可以是 Expression 或 NULL
-            struct ASTNode *update;   // 可以是 Expression 或 NULL
-            struct ASTNode *body;
-        } for_stmt;
-
-        // [新增] NODE_FOR_IN_STATEMENT
-        struct {
-            struct ASTNode *left;  // 变量声明 或 LHS 表达式
-            struct ASTNode *right; // 对象表达式
-            struct ASTNode *body;
-        } for_in_stmt;
-
-        // [新增] NODE_FOR_OF_STATEMENT
-        struct {
-            struct ASTNode *left;
-            struct ASTNode *right;
-            struct ASTNode *body;
-            bool await; // for await ( ... )
-        } for_of_stmt;
-
-
-        // NODE_BREAK_STATEMENT (无子节点)
+        struct { NodeList *body; } script;
+        struct { DeclarationType decl_type; NodeList *declarations; } var_decl;
+        struct { struct ASTNode *id; struct ASTNode *init; } var_declarator;
+        struct { char *name; } identifier;
+        struct { LiteralType type; char *value; } literal;
+        struct { struct ASTNode *test; struct ASTNode *consequent; struct ASTNode *alternate; } if_stmt;
+        struct { struct ASTNode *test; struct ASTNode *body; } while_stmt;
+        struct { struct ASTNode *body; struct ASTNode *test; } do_while_stmt;
+        struct { struct ASTNode *init; struct ASTNode *test; struct ASTNode *update; struct ASTNode *body; } for_stmt;
+        struct { struct ASTNode *left; struct ASTNode *right; struct ASTNode *body; } for_in_stmt;
+        struct { struct ASTNode *left; struct ASTNode *right; struct ASTNode *body; bool await; } for_of_stmt;
         struct {} break_stmt;
-
-        // NODE_CONTINUE_STATEMENT (无子节点)
         struct {} continue_stmt;
-        // NODE_SWITCH_STATEMENT
-        struct {
-            struct ASTNode *discriminant; // switch (discriminant)
-            NodeList *cases;              // case 列表
-        } switch_stmt;
-
-        // NODE_SWITCH_CASE
-        struct {
-            struct ASTNode *test; // case test: (如果 test 为 NULL, 则为 default)
-            NodeList *consequent; // case 里的语句列表
-        } switch_case; 
-
-        // NODE_CONDITIONAL_EXPRESSION ( ? : )
-        struct {
-            struct ASTNode *test;
-            struct ASTNode *consequent; // (if true)
-            struct ASTNode *alternate;  // (if false)
-        } conditional_expr;
-
-        // NODE_NEW_EXPRESSION
-        struct {
-            struct ASTNode *callee;
-            NodeList *arguments; // 可以是 NULL (如果 new MyClass; 没有括号)
-        } new_expr;
-
-        // NODE_TRY_STATEMENT
-        struct {
-            struct ASTNode *block;     // 'try' 块 (BlockStatement)
-            struct ASTNode *handler;   // 'catch' 子句 (CatchClause 或 NULL)
-            struct ASTNode *finalizer; // 'finally' 块 (BlockStatement 或 NULL)
-        } try_stmt;
-
-        // NODE_CATCH_CLAUSE
-        struct {
-            struct ASTNode *param; // 'catch (e)' 中的 'e' (Identifier)
-            struct ASTNode *body;  // 'catch' 块 (BlockStatement)
-        } catch_clause;
-
-        // NODE_THROW_STATEMENT
-        struct {
-            struct ASTNode *argument; // throw argument
-        } throw_stmt;
-
-        // NODE_OBJECT_EXPRESSION ( { ... } )
-        struct {
-            NodeList *properties;
-        } object_expr;
-
-        // NODE_PROPERTY ( key: value )
+        struct { struct ASTNode *discriminant; NodeList *cases; } switch_stmt;
+        struct { struct ASTNode *test; NodeList *consequent; } switch_case;
+        struct { struct ASTNode *test; struct ASTNode *consequent; struct ASTNode *alternate; } conditional_expr;
+        struct { struct ASTNode *callee; NodeList *arguments; } new_expr;
+        struct { struct ASTNode *block; struct ASTNode *handler; struct ASTNode *finalizer; } try_stmt;
+        struct { struct ASTNode *param; struct ASTNode *body; } catch_clause;
+        struct { struct ASTNode *argument; } throw_stmt;
+        struct { NodeList *properties; } object_expr;
         struct {
             struct ASTNode *key;
             struct ASTNode *value;
-            // (未来可以添加: 'kind' (init, get, set), 'computed' 等)
+            MethodKind kind;
+            bool computed;
+            bool shorthand;
         } property;
-
-        // NODE_ARRAY_EXPRESSION ( [ ... ] )
-        struct {
-            NodeList *elements;
-        } array_expr;
-
-        // NODE_ARROW_FUNCTION_EXPRESSION ( => )
-        struct {
-            NodeList *params;
-            struct ASTNode *body;
-            bool expression; // 'true' for '() => a', 'false' for '() => { ... }'
-        } arrow_func_expr;
-
-        // NODE_FUNCTION_EXPRESSION ( function [name](...) { ... } )
-        struct {
-            struct ASTNode *id;     // 标识符 (函数名), 可以为 NULL
-            NodeList *params;       // 参数列表
-            struct ASTNode *body;   // 函数体 (BlockStatement)
-        } func_expr;
-
-        // NODE_CLASS_DECLARATION
-        struct {
-            struct ASTNode *id;     // 类名 (Identifier)
-            struct ASTNode *superClass; // 继承 (Expression 或 NULL)
-            struct ASTNode *body;   // ClassBody 节点
-        } class_decl;
-
-        // NODE_CLASS_BODY
-        struct {
-            NodeList *body; // MethodDefinition 节点的列表
-        } class_body;
-
-        // NODE_METHOD_DEFINITION
+        struct { NodeList *elements; } array_expr;
+        struct { NodeList *params; struct ASTNode *body; bool expression; } arrow_func_expr;
+        struct { struct ASTNode *id; NodeList *params; struct ASTNode *body; } func_expr;
+        struct { struct ASTNode *id; struct ASTNode *superClass; struct ASTNode *body; } class_decl;
+        struct { NodeList *body; } class_body;
         struct {
             struct ASTNode *key;
-            struct ASTNode *value; // 这是一个 FunctionExpression
+            struct ASTNode *value;
             MethodKind kind;
             bool is_static;
         } method_def;
-
-        // NODE_IMPORT_DECLARATION
-        struct {
-            struct ASTNode *source; // 模块路径 (String Literal)
-            NodeList *specifiers;   // 导入说明符列表 (ImportSpecifier)
-        } import_decl;
-
-        // NODE_IMPORT_SPECIFIER
-        struct {
-            struct ASTNode *imported; // 导出名 (Identifier, 对于默认导入为 NULL)
-            struct ASTNode *local;    // 本地名 (Identifier)
-            bool is_default;          // 是否为默认导入 (import x from ...)
-            bool is_namespace;        // 是否为命名空间导入 (import * as x from ...)
-        } import_spec;
-
-        // NODE_EXPORT_DECLARATION
-        struct {
-            struct ASTNode *declaration; // 导出的声明 (VariableDeclaration, FunctionDeclaration 等)
-            NodeList *specifiers;        // 导出说明符列表 (ExportSpecifier, 仅当 declaration 为 NULL 时)
-            struct ASTNode *source;      // 重新导出源 (export ... from "...", 可选)
-            bool is_default;             // 是否为默认导出 (export default ...)
-        } export_decl;
-
-        // NODE_EXPORT_SPECIFIER
-        struct {
-            struct ASTNode *local;    // 本地名 (Identifier)
-            struct ASTNode *exported; // 导出名 (Identifier)
-        } export_spec;
-
-        // NODE_SUPER (无子节点)
+        struct { struct ASTNode *source; NodeList *specifiers; } import_decl;
+        struct { struct ASTNode *imported; struct ASTNode *local; bool is_default; bool is_namespace; } import_spec;
+        struct { struct ASTNode *declaration; NodeList *specifiers; struct ASTNode *source; bool is_default; } export_decl;
+        struct { struct ASTNode *local; struct ASTNode *exported; } export_spec;
         struct {} super_expr;
-
-        // NODE_EXPRESSION_STATEMENT
-        struct {
-            struct ASTNode *expression;
-        } expr_stmt;
-
-        // NODE_RETURN_STATEMENT
-        struct {
-            struct ASTNode *argument; // (可选)
-        } return_stmt;
-
-        // NODE_FUNCTION_DECLARATION
-        struct {
-            struct ASTNode *id;     // Identifier (函数名)
-            NodeList *params; // NODE_ARGUMENT_LIST (参数列表)
-            struct ASTNode *body;   // NODE_BLOCK_STATEMENT (函数体)
-        } func_decl;
-
-        // NODE_BINARY_EXPRESSION
-        struct {
-            BinaryOpType op;
-            struct ASTNode *left;
-            struct ASTNode *right;
-        } binary_expr;
-
-        // NODE_ASSIGNMENT_EXPRESSION
-        struct {
-            BinaryOpType op;
-            struct ASTNode *left;
-            struct ASTNode *right;
-        } assignment_expr;
-
-        // NODE_UNARY_EXPRESSION
-        struct {
-            UnaryOpType op;
-            struct ASTNode *argument;
-            bool prefix; // 区分前缀(true)还是后缀(false)
-        } unary_expr;
-
-        // NODE_CALL_EXPRESSION
-        struct {
-            struct ASTNode *callee;
-            NodeList *arguments; // 指向 NODE_ARGUMENT_LIST
-        } call_expr;
-
-        // NODE_MEMBER_EXPRESSION
-        struct {
-            struct ASTNode *object;
-            struct ASTNode *property;
-            bool computed; // true: a[b], false: a.b
-        } member_expr;
-        
-        // NODE_THIS_EXPRESSION (无特定字段)
+        struct { struct ASTNode *expression; } expr_stmt;
+        struct { struct ASTNode *argument; } return_stmt;
+        struct { struct ASTNode *id; NodeList *params; struct ASTNode *body; } func_decl;
+        struct { BinaryOpType op; struct ASTNode *left; struct ASTNode *right; } binary_expr;
+        struct { BinaryOpType op; struct ASTNode *left; struct ASTNode *right; } assignment_expr;
+        struct { UnaryOpType op; struct ASTNode *argument; bool prefix; } unary_expr;
+        struct { struct ASTNode *callee; NodeList *arguments; } call_expr;
+        struct { struct ASTNode *object; struct ASTNode *property; bool computed; } member_expr;
+        struct { struct ASTNode *argument; } spread_element;
+        struct { NodeList *properties; } object_pattern;
+        struct { NodeList *elements; } array_pattern;
+        struct { struct ASTNode *left; struct ASTNode *right; } assignment_pattern;
+        struct { struct ASTNode *argument; } rest_element;
+        struct { struct ASTNode *label; struct ASTNode *body; } labelled_stmt;
+        /* NODE_UNKNOWN 无需特定数据 */
     } data;
 } ASTNode;
 
-// --- AST 辅助函数声明 ---
-
-// 创建节点
+// 函数声明
 ASTNode* create_block_statement(NodeList *body);
 ASTNode* create_declaration_list(DeclarationType type, NodeList *declarations);
 ASTNode* create_variable_declarator(ASTNode *id, ASTNode *init);
@@ -378,10 +173,8 @@ ASTNode* create_if_statement(ASTNode *test, ASTNode *consequent, ASTNode *altern
 ASTNode* create_while_statement(ASTNode *test, ASTNode *body);
 ASTNode* create_do_while_statement(ASTNode *body, ASTNode *test);
 ASTNode* create_for_statement(ASTNode *init, ASTNode *test, ASTNode *update, ASTNode *body);
-// [新增]
 ASTNode* create_for_in_statement(ASTNode *left, ASTNode *right, ASTNode *body);
 ASTNode* create_for_of_statement(ASTNode *left, ASTNode *right, ASTNode *body, bool await);
-
 ASTNode* create_break_statement(void);
 ASTNode* create_continue_statement(void);
 ASTNode* create_switch_statement(ASTNode* discriminant, NodeList* cases);
@@ -409,12 +202,21 @@ ASTNode* create_return_statement(ASTNode *argument);
 ASTNode* create_function_declaration(ASTNode *id, NodeList *params, ASTNode *body);
 ASTNode* create_binary_expr(BinaryOpType op, ASTNode *left, ASTNode *right);
 ASTNode* create_assignment_expr(BinaryOpType op, ASTNode *left, ASTNode *right);
-ASTNode* create_unary_expr(UnaryOpType op, ASTNode *argument, bool prefix); // 扩展了 API
+ASTNode* create_unary_expr(UnaryOpType op, ASTNode *argument, bool prefix);
 ASTNode* create_call_expression(ASTNode *callee, NodeList *arguments);
 ASTNode* create_member_access(ASTNode *object, ASTNode *property, bool computed);
+ASTNode* create_spread_element(ASTNode *argument);
+ASTNode* create_object_pattern(NodeList *properties);
+ASTNode* create_array_pattern(NodeList *elements);
+ASTNode* create_assignment_pattern(ASTNode *left, ASTNode *right);
+ASTNode* create_rest_element(ASTNode *argument);
+ASTNode* create_labelled_statement(ASTNode *label, ASTNode *body);
 
-// 列表操作
+/* [新增] */
+ASTNode* create_unknown_node(void);
+
 NodeList* nodelist_create(void);
 void nodelist_append(NodeList* list, ASTNode* node);
 void print_ast(ASTNode *node, int indent);
-#endif // AST_H
+
+#endif

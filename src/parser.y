@@ -1,6 +1,5 @@
-/* src/parser.y - 移除了 ASI 逻辑并修复了冲突 */
+/* src/parser.y - Fix Infinite Loop in Error Recovery */
 
-/* C 声明区 */
 %{
 #include <stdio.h>
 #include <string.h>
@@ -10,27 +9,24 @@
 extern ParserState *scanner;
 extern ASTNode *ast_root;
 
-/* 词法分析器函数 (yylex 是 re2c 生成的主函数) */
 int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 %}
 
-/* Bison 配置 */
 %pure-parser
 %locations
 %parse-param { ParserState* state }
 %lex-param { ParserState* state }
 
-/* %union 定义 */
 %union {
     char *str_val;
     struct ASTNode *node;
     NodeList *list;
 }
 
-/* --- 终结符 (Tokens) --- */
-%token <str_val> IDENTIFIER STRING_LITERAL NUMERIC_LITERAL REGEX_LITERAL
+/* --- Tokens --- */
+%token <str_val> IDENTIFIER STRING_LITERAL NUMERIC_LITERAL REGEX_LITERAL PRIVATE_IDENTIFIER
 
-/* 标点符号与运算符 */
+/* Punctuators */
 %token LBRACE RBRACE LPAREN RPAREN LBRACK RBRACK DOT SEMICOLON COMMA
 %token LT GT LE GE EQ NE STRICT_EQ STRICT_NE
 %token PLUS MINUS MUL MOD POWER INC DEC DIV DIV_ASSIGN
@@ -39,25 +35,26 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 %token CONDITIONAL COLON ASSIGN ADD_ASSIGN SUB_ASSIGN MUL_ASSIGN POWER_ASSIGN
 %token ARROW SPREAD
 
-/* 关键字 */
+/* Keywords (Reserved) */
 %token BREAK CASE CATCH CLASS CONST CONTINUE DEBUGGER DEFAULT DELETE DO
 %token ELSE EXPORT EXTENDS FINALLY FOR FUNCTION IF IMPORT IN INSTANCEOF
-%token FROM AS OF
 %token NEW RETURN SUPER SWITCH THIS THROW TRY TYPEOF VAR VOID WHILE WITH
-%token YIELD LET STATIC ENUM AWAIT
+%token YIELD ENUM AWAIT
 
-/* 字面量 */
+/* Contextual Keywords */
+%token GET SET STATIC ASYNC FROM OF LET AS
+
 %token TRUE_LITERAL FALSE_LITERAL NULL_LITERAL
-/* 移除了 TOK_VIRTUAL_SEMICOLON */
 
-/* --- 非终结符类型定义 (补全) --- */
+/* --- Types --- */
 %type <list> statement_list_opt statement_list
 %type <list> variable_declaration_list_inner
 %type <list> property_list element_list
-%type <list> arrow_parameter_list /* [修改] */
+%type <list> arrow_parameter_list
 %type <list> method_definition_list switch_case_list case_statement_list
 %type <list> arguments argument_list
 %type <list> import_specifier_list export_specifier_list
+%type <list> binding_property_list binding_element_list
 
 %type <node> Script statement block_statement variable_statement empty_statement
 %type <node> if_statement iteration_statement break_statement continue_statement
@@ -79,20 +76,25 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 %type <node> switch_case catch_clause finally_clause
 %type <node> expression_opt function_name_opt
 %type <node> statement_list_item
-%type <node> identifier_name
+%type <node> identifier_name 
+%type <node> keyword_identifier
+%type <node> for_declaration
+%type <node> labelled_statement
+%type <node> binding_identifier
 
-/* [修复] 补全所有缺失的类型声明 */
 %type <node> for_statement
 %type <node> for_in_statement
 %type <node> for_of_statement
 %type <node> do_while_statement
 %type <node> while_statement
 %type <node> expression_statement
-
-/* [新增] 宽松分号规则 */
 %type <node> optional_semicolon
 
-/* --- 优先级 (Priority) --- */
+/* Patterns */
+%type <node> binding_pattern object_binding_pattern array_binding_pattern
+%type <node> binding_property binding_element single_name_binding
+
+/* --- Precedence --- */
 %left COMMA
 %right ASSIGN ADD_ASSIGN SUB_ASSIGN MUL_ASSIGN POWER_ASSIGN DIV_ASSIGN
 %right CONDITIONAL ARROW
@@ -116,17 +118,15 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 
 %%
 
-/* === 1. 顶层规则 === */
+/* === 1. Top Level === */
 
 Script:
     statement_list_opt
     { ast_root = create_script_node($1); }
 
 statement_list_opt:
-    /* empty */
-    { $$ = nodelist_create(); }
-|   statement_list
-    { $$ = $1; }
+    /* empty */ { $$ = nodelist_create(); }
+|   statement_list { $$ = $1; }
 
 statement_list:
     statement_list_item
@@ -141,20 +141,18 @@ statement_list:
     }
 
 statement_list_item:
-    statement
-    { $$ = $1; }
-|   function_declaration
-    { $$ = $1; }
-|   class_declaration
-    { $$ = $1; }
-|   export_declaration
-    { $$ = $1; }
-|   import_declaration
-    { $$ = $1; }
+    statement { $$ = $1; }
+|   function_declaration { $$ = $1; }
+|   class_declaration { $$ = $1; }
+|   export_declaration { $$ = $1; }
+|   import_declaration { $$ = $1; }
 
 identifier_name:
     IDENTIFIER { $$ = create_identifier_node($1); }
-|   CLASS { $$ = create_identifier_node(pool_strdup("class")); }
+|   keyword_identifier { $$ = $1; }
+
+keyword_identifier:
+    CLASS { $$ = create_identifier_node(pool_strdup("class")); }
 |   DEFAULT { $$ = create_identifier_node(pool_strdup("default")); }
 |   FUNCTION { $$ = create_identifier_node(pool_strdup("function")); }
 |   IF { $$ = create_identifier_node(pool_strdup("if")); }
@@ -195,50 +193,66 @@ identifier_name:
 |   THROW { $$ = create_identifier_node(pool_strdup("throw")); }
 |   DEBUGGER { $$ = create_identifier_node(pool_strdup("debugger")); }
 |   WITH { $$ = create_identifier_node(pool_strdup("with")); }
-|   STATIC { $$ = create_identifier_node(pool_strdup("static")); }
 |   ENUM { $$ = create_identifier_node(pool_strdup("enum")); }
+|   GET { $$ = create_identifier_node(pool_strdup("get")); }
+|   SET { $$ = create_identifier_node(pool_strdup("set")); }
+|   STATIC { $$ = create_identifier_node(pool_strdup("static")); }
+|   ASYNC { $$ = create_identifier_node(pool_strdup("async")); }
 
+binding_identifier:
+    IDENTIFIER { $$ = create_identifier_node($1); }
+|   GET { $$ = create_identifier_node(pool_strdup("get")); }
+|   SET { $$ = create_identifier_node(pool_strdup("set")); }
+|   STATIC { $$ = create_identifier_node(pool_strdup("static")); }
+|   ASYNC { $$ = create_identifier_node(pool_strdup("async")); }
+|   LET { $$ = create_identifier_node(pool_strdup("let")); }
+|   FROM { $$ = create_identifier_node(pool_strdup("from")); }
+|   OF { $$ = create_identifier_node(pool_strdup("of")); }
+|   AS { $$ = create_identifier_node(pool_strdup("as")); }
+|   YIELD { $$ = create_identifier_node(pool_strdup("yield")); }
+|   AWAIT { $$ = create_identifier_node(pool_strdup("await")); }
 
-/* === 2. 语句 (Statements) === */
+/* === 2. Statements === */
 
 statement:
-    block_statement
-    { $$ = $1; }
-|   variable_statement
-    { $$ = $1; }
-|   if_statement
-    { $$ = $1; }
-|   return_statement
-    { $$ = $1; }
-|   expression_statement
-    { $$ = $1; }
-|   iteration_statement    
-    { $$ = $1; }
-|   break_statement
-    { $$ = $1; }
-|   continue_statement
-    { $$ = $1; }
-|   switch_statement
-    { $$ = $1; }
-|   try_statement
-    { $$ = $1; }
-|   throw_statement
-    { $$ = $1; }
-|   empty_statement
-    { $$ = $1; }
-|   debugger_statement
-    { $$ = NULL; }
-|   with_statement
-    { $$ = NULL; /* 不实现，但需解析通过 */ }
+    block_statement { $$ = $1; }
+|   variable_statement { $$ = $1; }
+|   if_statement { $$ = $1; }
+|   return_statement { $$ = $1; }
+|   expression_statement { $$ = $1; }
+|   iteration_statement { $$ = $1; }
+|   break_statement { $$ = $1; }
+|   continue_statement { $$ = $1; }
+|   switch_statement { $$ = $1; }
+|   try_statement { $$ = $1; }
+|   throw_statement { $$ = $1; }
+|   empty_statement { $$ = $1; }
+|   debugger_statement { $$ = NULL; }
+|   with_statement { $$ = NULL; }
+|   labelled_statement { $$ = $1; }
+/* [关键修复] 错误恢复必须消耗掉一个 Token (SEMICOLON 或 RBRACE) 才能 yyerrok */
+/* 这防止了死循环：如果不消耗任何 Token 就 clear error，Parser 会再次遇到同一个错误 */
+|   error SEMICOLON 
+    { 
+        $$ = create_unknown_node(); 
+        yyerrok; 
+    }
+|   error RBRACE 
+    { 
+        $$ = create_unknown_node(); 
+        yyerrok; 
+    }
 
-/* [新增] 宽松分号规则 */
 optional_semicolon:
     /* empty */ { $$ = NULL; }
 |   SEMICOLON   { $$ = NULL; }
 
 empty_statement:
-    SEMICOLON
-    { $$ = NULL; }
+    SEMICOLON { $$ = NULL; }
+
+labelled_statement:
+    binding_identifier COLON statement
+    { $$ = create_labelled_statement($1, $3); }
 
 block_statement:
     LBRACE statement_list_opt RBRACE
@@ -258,19 +272,12 @@ if_statement:
 |   IF LPAREN expression RPAREN statement ELSE statement
     { $$ = create_if_statement($3, $5, $7); }
 
-/* --- 迭代语句 (已重构以消除冲突) --- */
-
 iteration_statement:
-    do_while_statement
-    { $$ = $1; }
-|   while_statement
-    { $$ = $1; }
-|   for_statement       /* 标准 C 风格 for 循环 */
-    { $$ = $1; }
-|   for_in_statement    /* For...In 循环 */
-    { $$ = $1; }
-|   for_of_statement    /* For...Of 循环 */
-    { $$ = $1; }
+    do_while_statement { $$ = $1; }
+|   while_statement { $$ = $1; }
+|   for_statement { $$ = $1; }
+|   for_in_statement { $$ = $1; }
+|   for_of_statement { $$ = $1; }
 
 do_while_statement:
     DO statement WHILE LPAREN expression RPAREN optional_semicolon
@@ -280,46 +287,65 @@ while_statement:
     WHILE LPAREN expression RPAREN statement
     { $$ = create_while_statement($3, $5); }
 
-/* [修复] 将所有 for 循环分开定义，消除歧义 */
-
-/* 标准 C 风格 for 循环 */
 for_statement:
     FOR LPAREN for_init SEMICOLON expression_opt SEMICOLON expression_opt RPAREN statement
     { $$ = create_for_statement($3, $5, $7, $9); }
 
-/* For-In 循环 */
 for_in_statement:
     FOR LPAREN left_hand_side_expression IN expression RPAREN statement
     { $$ = create_for_in_statement($3, $5, $7); }
 |   FOR LPAREN variable_declaration_list IN expression RPAREN statement
     { $$ = create_for_in_statement($3, $5, $7); }
+|   FOR LPAREN for_declaration IN expression RPAREN statement
+    { $$ = create_for_in_statement($3, $5, $7); }
 
-/* For-Of 循环 */
 for_of_statement:
     FOR LPAREN left_hand_side_expression OF expression RPAREN statement
     { $$ = create_for_of_statement($3, $5, $7, false); }
 |   FOR LPAREN variable_declaration_list OF expression RPAREN statement
     { $$ = create_for_of_statement($3, $5, $7, false); }
+|   FOR LPAREN for_declaration OF expression RPAREN statement
+    { $$ = create_for_of_statement($3, $5, $7, false); }
 |   FOR AWAIT LPAREN left_hand_side_expression OF expression RPAREN statement
     { $$ = create_for_of_statement($4, $6, $8, true); }
+|   FOR AWAIT LPAREN for_declaration OF expression RPAREN statement
+    { $$ = create_for_of_statement($4, $6, $8, true); }
 
-/* for_init 同时服务于 for(;;) 和 for(let i=0;...) */
+for_declaration:
+    VAR binding_pattern
+    { 
+        NodeList *l = nodelist_create(); 
+        nodelist_append(l, create_variable_declarator($2, NULL));
+        $$ = create_declaration_list(DECL_VAR, l); 
+    }
+|   LET binding_pattern
+    { 
+        NodeList *l = nodelist_create(); 
+        nodelist_append(l, create_variable_declarator($2, NULL));
+        $$ = create_declaration_list(DECL_LET, l); 
+    }
+|   CONST binding_pattern
+    { 
+        NodeList *l = nodelist_create(); 
+        nodelist_append(l, create_variable_declarator($2, NULL));
+        $$ = create_declaration_list(DECL_CONST, l); 
+    }
+
 for_init:
-    /* empty */
-    { $$ = NULL; }
-|   variable_declaration_list
-    { $$ = $1; }
-|   expression
-    { $$ = $1; }
-
-/* --- 其他语句 --- */
+    /* empty */ { $$ = NULL; }
+|   variable_declaration_list { $$ = $1; }
+|   expression { $$ = $1; }
 
 break_statement:
     BREAK optional_semicolon
     { $$ = create_break_statement(); }
+|   BREAK binding_identifier optional_semicolon
+    { $$ = create_break_statement(); }
 
 continue_statement:
     CONTINUE optional_semicolon
+    { $$ = create_continue_statement(); }
+|   CONTINUE binding_identifier optional_semicolon
     { $$ = create_continue_statement(); }
 
 return_statement:
@@ -328,7 +354,7 @@ return_statement:
 
 with_statement:
     WITH LPAREN expression RPAREN statement
-    { $$ = NULL; /* 暂不实现 */ }
+    { $$ = NULL; }
 
 switch_statement:
     SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE
@@ -361,36 +387,50 @@ try_statement:
     { $$ = create_try_statement($2, $3, $4); }
 
 catch_clause:
-    CATCH LPAREN IDENTIFIER RPAREN block_statement
-    { $$ = create_catch_clause(create_identifier_node($3), $5); }
+    CATCH LPAREN binding_pattern RPAREN block_statement
+    { $$ = create_catch_clause($3, $5); }
 
 finally_clause:
-    FINALLY block_statement
-    { $$ = $2; } 
+    FINALLY block_statement { $$ = $2; } 
 
 debugger_statement:
-    DEBUGGER optional_semicolon
-    { $$ = NULL; }
+    DEBUGGER optional_semicolon { $$ = NULL; }
 
-/* === 3. 函数与类 === */
+/* === 3. Functions & Classes === */
 
 function_declaration:
-    FUNCTION IDENTIFIER arguments block_statement
-    { $$ = create_function_declaration(create_identifier_node($2), $3, $4); }
+    FUNCTION binding_identifier arguments block_statement
+    { $$ = create_function_declaration($2, $3, $4); }
+|   FUNCTION MUL binding_identifier arguments block_statement
+    { $$ = create_function_declaration($3, $4, $5); }
+|   ASYNC FUNCTION binding_identifier arguments block_statement
+    { $$ = create_function_declaration($3, $4, $5); }
+|   ASYNC FUNCTION MUL binding_identifier arguments block_statement
+    { $$ = create_function_declaration($4, $5, $6); }
+|   binding_identifier FUNCTION binding_identifier arguments block_statement
+    { $$ = create_function_declaration($3, $4, $5); }
 
 function_expression:
     FUNCTION function_name_opt arguments block_statement
     { $$ = create_function_expression($2, $3, $4); }
+|   FUNCTION MUL function_name_opt arguments block_statement
+    { $$ = create_function_expression($3, $4, $5); }
+|   ASYNC FUNCTION function_name_opt arguments block_statement
+    { $$ = create_function_expression($3, $4, $5); }
+|   ASYNC FUNCTION MUL function_name_opt arguments block_statement
+    { $$ = create_function_expression($4, $5, $6); }
+|   binding_identifier FUNCTION function_name_opt arguments block_statement
+    { $$ = create_function_expression($3, $4, $5); }
 
 function_name_opt:
     /* empty */ { $$ = NULL; }
-|   IDENTIFIER { $$ = create_identifier_node($1); }
+|   binding_identifier { $$ = $1; }
 
 class_declaration:
-    CLASS IDENTIFIER class_body
-    { $$ = create_class_declaration(create_identifier_node($2), NULL, $3); }
-|   CLASS IDENTIFIER EXTENDS assignment_expression class_body
-    { $$ = create_class_declaration(create_identifier_node($2), $4, $5); }
+    CLASS binding_identifier class_body
+    { $$ = create_class_declaration($2, NULL, $3); }
+|   CLASS binding_identifier EXTENDS assignment_expression class_body
+    { $$ = create_class_declaration($2, $4, $5); }
 
 class_body:
     LBRACE method_definition_list RBRACE
@@ -411,27 +451,85 @@ method_definition:
         ASTNode* func_value = create_function_expression(NULL, $3, $4);
         $$ = create_method_definition($2, func_value, true); 
     }
+|   MUL property_name arguments block_statement
+    {
+        ASTNode* func_value = create_function_expression(NULL, $3, $4);
+        $$ = create_method_definition($2, func_value, false); 
+    }
+|   STATIC MUL property_name arguments block_statement
+    {
+        ASTNode* func_value = create_function_expression(NULL, $4, $5);
+        $$ = create_method_definition($3, func_value, true); 
+    }
+|   property_name SEMICOLON
+    { $$ = create_method_definition($1, NULL, false); }
+|   property_name ASSIGN assignment_expression SEMICOLON
+    { $$ = create_method_definition($1, $3, false); }
+|   STATIC property_name SEMICOLON
+    { $$ = create_method_definition($2, NULL, true); }
+|   STATIC property_name ASSIGN assignment_expression SEMICOLON
+    { $$ = create_method_definition($2, $4, true); }
+|   GET property_name LPAREN RPAREN block_statement
+    {
+        ASTNode* func_value = create_function_expression(NULL, nodelist_create(), $5);
+        $$ = create_method_definition($2, func_value, false); 
+        $$->data.method_def.kind = KIND_GET;
+    }
+|   SET property_name LPAREN binding_pattern RPAREN block_statement
+    {
+        NodeList* params = nodelist_create();
+        nodelist_append(params, $4); 
+        ASTNode* func_value = create_function_expression(NULL, params, $6);
+        $$ = create_method_definition($2, func_value, false); 
+        $$->data.method_def.kind = KIND_SET;
+    }
+|   STATIC GET property_name LPAREN RPAREN block_statement
+    {
+        ASTNode* func_value = create_function_expression(NULL, nodelist_create(), $6);
+        $$ = create_method_definition($3, func_value, true); 
+        $$->data.method_def.kind = KIND_GET;
+    }
+|   STATIC SET property_name LPAREN binding_pattern RPAREN block_statement
+    {
+        NodeList* params = nodelist_create();
+        nodelist_append(params, $5);
+        ASTNode* func_value = create_function_expression(NULL, params, $7);
+        $$ = create_method_definition($3, func_value, true); 
+        $$->data.method_def.kind = KIND_SET;
+    }
+|   PRIVATE_IDENTIFIER arguments block_statement
+    {
+        ASTNode* func_value = create_function_expression(NULL, $2, $3);
+        $$ = create_method_definition(create_identifier_node($1), func_value, false);
+    }
+|   PRIVATE_IDENTIFIER SEMICOLON
+    { $$ = create_method_definition(create_identifier_node($1), NULL, false); }
+|   PRIVATE_IDENTIFIER ASSIGN assignment_expression SEMICOLON
+    { $$ = create_method_definition(create_identifier_node($1), $3, false); }
+|   STATIC block_statement
+    {
+        ASTNode* func_value = create_function_expression(NULL, nodelist_create(), $2);
+        $$ = create_method_definition(create_identifier_node("static_block"), func_value, true);
+    }
 
-/* === 4. 模块 (Imports / Exports) === */
+/* === 4. Modules === */
 
 import_declaration:
     IMPORT STRING_LITERAL optional_semicolon
     { $$ = create_import_declaration(create_literal_node(LITERAL_STRING, $2), NULL); }
 |   IMPORT LBRACE import_specifier_list RBRACE FROM STRING_LITERAL optional_semicolon
     { $$ = create_import_declaration(create_literal_node(LITERAL_STRING, $6), $3); }
-|   IMPORT IDENTIFIER FROM STRING_LITERAL optional_semicolon
+|   IMPORT binding_identifier FROM STRING_LITERAL optional_semicolon
     { 
         NodeList *specs = nodelist_create();
-        ASTNode *local = create_identifier_node($2);
-        ASTNode *spec = create_import_specifier(NULL, local, true, false);
+        ASTNode *spec = create_import_specifier(NULL, $2, true, false);
         nodelist_append(specs, spec);
         $$ = create_import_declaration(create_literal_node(LITERAL_STRING, $4), specs); 
     }
-|   IMPORT MUL AS IDENTIFIER FROM STRING_LITERAL optional_semicolon
+|   IMPORT MUL AS binding_identifier FROM STRING_LITERAL optional_semicolon
     {
         NodeList *specs = nodelist_create();
-        ASTNode *local = create_identifier_node($4);
-        ASTNode *spec = create_import_specifier(NULL, local, false, true);
+        ASTNode *spec = create_import_specifier(NULL, $4, false, true);
         nodelist_append(specs, spec);
         $$ = create_import_declaration(create_literal_node(LITERAL_STRING, $6), specs);
     }
@@ -441,10 +539,10 @@ import_specifier_list:
 |   import_specifier_list COMMA import_specifier { nodelist_append($1, $3); $$ = $1; }
 
 import_specifier:
-    IDENTIFIER
-    { $$ = create_import_specifier(create_identifier_node($1), create_identifier_node($1), false, false); }
-|   IDENTIFIER AS IDENTIFIER
-    { $$ = create_import_specifier(create_identifier_node($1), create_identifier_node($3), false, false); }
+    identifier_name
+    { $$ = create_import_specifier($1, $1, false, false); }
+|   identifier_name AS binding_identifier
+    { $$ = create_import_specifier($1, $3, false, false); }
 
 export_declaration:
     EXPORT variable_statement
@@ -465,14 +563,13 @@ export_specifier_list:
 |   export_specifier_list COMMA export_specifier { nodelist_append($1, $3); $$ = $1; }
 
 export_specifier:
-    IDENTIFIER
-    { $$ = create_export_specifier(create_identifier_node($1), create_identifier_node($1)); }
-|   IDENTIFIER AS IDENTIFIER
-    { $$ = create_export_specifier(create_identifier_node($1), create_identifier_node($3)); }
+    identifier_name
+    { $$ = create_export_specifier($1, $1); }
+|   identifier_name AS identifier_name
+    { $$ = create_export_specifier($1, $3); }
 
-/* === 5. 表达式 (Expressions) === */
+/* === 5. Expressions & Patterns === */
 
-/* for_init 使用的 Vardecl 列表 (无分号) */
 variable_declaration_list:
     VAR variable_declaration_list_inner
     { $$ = create_declaration_list(DECL_VAR, $2); }
@@ -488,10 +585,72 @@ variable_declaration_list_inner:
     { nodelist_append($1, $3); $$ = $1; }
 
 variable_declaration:
-    IDENTIFIER
-    { $$ = create_variable_declarator(create_identifier_node($1), NULL); }
-|   IDENTIFIER ASSIGN assignment_expression
-    { $$ = create_variable_declarator(create_identifier_node($1), $3); }
+    binding_pattern
+    { $$ = create_variable_declarator($1, NULL); }
+|   binding_pattern ASSIGN assignment_expression
+    { $$ = create_variable_declarator($1, $3); }
+
+binding_pattern:
+    binding_identifier
+    { $$ = $1; }
+|   object_binding_pattern
+    { $$ = $1; }
+|   array_binding_pattern
+    { $$ = $1; }
+
+object_binding_pattern:
+    LBRACE RBRACE
+    { $$ = create_object_pattern(nodelist_create()); }
+|   LBRACE binding_property_list RBRACE
+    { $$ = create_object_pattern($2); }
+|   LBRACE binding_property_list COMMA RBRACE
+    { $$ = create_object_pattern($2); }
+
+binding_property_list:
+    binding_property
+    { $$ = nodelist_create(); nodelist_append($$, $1); }
+|   binding_property_list COMMA binding_property
+    { nodelist_append($1, $3); $$ = $1; }
+
+binding_property:
+    single_name_binding
+    {
+        $$ = create_property($1, $1);
+        $$->data.property.shorthand = true;
+    }
+|   property_name COLON binding_element
+    { $$ = create_property($1, $3); }
+|   SPREAD binding_identifier
+    { $$ = create_rest_element($2); }
+
+array_binding_pattern:
+    LBRACK RBRACK
+    { $$ = create_array_pattern(nodelist_create()); }
+|   LBRACK binding_element_list RBRACK
+    { $$ = create_array_pattern($2); }
+|   LBRACK binding_element_list COMMA RBRACK
+    { $$ = create_array_pattern($2); }
+
+binding_element_list:
+    binding_element
+    { $$ = nodelist_create(); nodelist_append($$, $1); }
+|   binding_element_list COMMA binding_element
+    { nodelist_append($1, $3); $$ = $1; }
+|   binding_element_list COMMA
+    { $$ = $1; }
+
+binding_element:
+    single_name_binding { $$ = $1; }
+|   binding_pattern { $$ = $1; }
+|   binding_pattern ASSIGN assignment_expression
+    { $$ = create_assignment_pattern($1, $3); }
+|   SPREAD binding_identifier
+    { $$ = create_rest_element($2); }
+
+single_name_binding:
+    binding_identifier { $$ = $1; }
+|   binding_identifier ASSIGN assignment_expression
+    { $$ = create_assignment_pattern($1, $3); }
 
 expression_opt:
     /* empty */ { $$ = NULL; }
@@ -513,6 +672,12 @@ assignment_expression:
     { $$ = create_assignment_expr(OP_MINUS, $1, $3); }
 |   left_hand_side_expression DIV_ASSIGN assignment_expression
     { $$ = create_assignment_expr(OP_DIV, $1, $3); }
+|   YIELD assignment_expression
+    { $$ = create_unary_expr(OP_VOID, $2, true); }
+|   YIELD
+    { $$ = create_unary_expr(OP_VOID, NULL, true); }
+|   YIELD MUL assignment_expression
+    { $$ = create_unary_expr(OP_VOID, $3, true); }
 
 conditional_expression:
     logical_or_expression { $$ = $1; }
@@ -611,6 +776,7 @@ unary_expression:
 |   MINUS unary_expression  { $$ = create_unary_expr(OP_UNARY_MINUS, $2, true); }
 |   BIT_NOT unary_expression{ $$ = create_unary_expr(OP_BIT_NOT, $2, true); }
 |   NOT unary_expression    { $$ = create_unary_expr(OP_NOT, $2, true); }
+|   AWAIT unary_expression  { $$ = create_unary_expr(OP_VOID, $2, true); }
 
 update_expression:
     left_hand_side_expression { $$ = $1; }
@@ -627,16 +793,25 @@ new_expression:
     member_expression { $$ = $1; }
 |   NEW new_expression { $$ = create_new_expression($2, NULL); }
 
-/* [修复] 允许 call_expression 递归，以支持 IIFE */
 call_expression:
     member_expression arguments
     { $$ = create_call_expression($1, $2); }
-|   call_expression arguments /* 允许 (expr)(args) */
+|   call_expression arguments
     { $$ = create_call_expression($1, $2); }
 |   NEW new_expression arguments
     { $$ = create_new_expression($2, $3); }
 |   SUPER arguments
     { $$ = create_call_expression(create_super_node(), $2); }
+|   call_expression LBRACK expression RBRACK
+    { $$ = create_member_access($1, $3, true); }
+|   call_expression DOT identifier_name
+    { $$ = create_member_access($1, $3, false); }
+|   call_expression DOT GET
+    { $$ = create_member_access($1, create_identifier_node(pool_strdup("get")), false); }
+|   call_expression DOT SET
+    { $$ = create_member_access($1, create_identifier_node(pool_strdup("set")), false); }
+|   call_expression DOT STATIC
+    { $$ = create_member_access($1, create_identifier_node(pool_strdup("static")), false); }
 
 member_expression:
     primary_expression { $$ = $1; }
@@ -644,6 +819,12 @@ member_expression:
     { $$ = create_member_access($1, $3, true); }
 |   member_expression DOT identifier_name
     { $$ = create_member_access($1, $3, false); }
+|   member_expression DOT GET
+    { $$ = create_member_access($1, create_identifier_node(pool_strdup("get")), false); }
+|   member_expression DOT SET
+    { $$ = create_member_access($1, create_identifier_node(pool_strdup("set")), false); }
+|   member_expression DOT STATIC
+    { $$ = create_member_access($1, create_identifier_node(pool_strdup("static")), false); }
 
 arguments:
     LPAREN RPAREN { $$ = nodelist_create(); }
@@ -654,6 +835,7 @@ argument_list:
     { $$ = nodelist_create(); nodelist_append($$, $1); }
 |   argument_list COMMA assignment_expression
     { nodelist_append($1, $3); $$ = $1; }
+|   argument_list COMMA { $$ = $1; }
 
 primary_expression:
     THIS { $$ = create_this_node(); }
@@ -664,7 +846,7 @@ primary_expression:
 |   TRUE_LITERAL { $$ = create_literal_node(LITERAL_TRUE, pool_strdup("true")); }
 |   FALSE_LITERAL { $$ = create_literal_node(LITERAL_FALSE, pool_strdup("false")); }
 |   NULL_LITERAL { $$ = create_literal_node(LITERAL_NULL, pool_strdup("null")); }
-|   LPAREN expression RPAREN { $$ = $2; } /* 括号表达式 */
+|   LPAREN expression RPAREN { $$ = $2; }
 |   object_expression { $$ = $1; }
 |   array_expression { $$ = $1; }
 |   function_expression { $$ = $1; }
@@ -673,67 +855,108 @@ primary_expression:
 object_expression:
     LBRACE RBRACE { $$ = create_object_expression(nodelist_create()); }
 |   LBRACE property_list RBRACE { $$ = create_object_expression($2); }
+|   LBRACE property_list COMMA RBRACE { $$ = create_object_expression($2); }
 
 property_list:
     property { $$ = nodelist_create(); nodelist_append($$, $1); }
+|   SPREAD assignment_expression
+    { $$ = nodelist_create(); nodelist_append($$, create_spread_element($2)); }
 |   property_list COMMA property { nodelist_append($1, $3); $$ = $1; }
+|   property_list COMMA SPREAD assignment_expression
+    { nodelist_append($1, create_spread_element($4)); $$ = $1; }
 |   property_list COMMA { $$ = $1; }
 
 property:
     property_name COLON assignment_expression
     { $$ = create_property($1, $3); }
+|   identifier_name
+    {
+        $$ = create_property($1, $1);
+        $$->data.property.shorthand = true;
+    }
+|   identifier_name ASSIGN assignment_expression
+    {
+        $$ = create_property($1, $3); 
+    }
+|   property_name arguments block_statement
+    {
+        ASTNode* func_value = create_function_expression(NULL, $2, $3);
+        $$ = create_property($1, func_value);
+        $$->data.property.kind = KIND_METHOD;
+    }
+|   MUL property_name arguments block_statement
+    {
+        ASTNode* func_value = create_function_expression(NULL, $3, $4);
+        $$ = create_property($2, func_value);
+        $$->data.property.kind = KIND_METHOD;
+    }
+|   GET property_name LPAREN RPAREN block_statement
+    {
+        ASTNode* func_value = create_function_expression(NULL, nodelist_create(), $5);
+        $$ = create_property($2, func_value);
+        $$->data.property.kind = KIND_GET;
+    }
+|   SET property_name LPAREN identifier_name RPAREN block_statement
+    {
+        NodeList* params = nodelist_create();
+        nodelist_append(params, $4);
+        ASTNode* func_value = create_function_expression(NULL, params, $6);
+        $$ = create_property($2, func_value);
+        $$->data.property.kind = KIND_SET;
+    }
+|   ASYNC property_name arguments block_statement
+    {
+        ASTNode* func_value = create_function_expression(NULL, $3, $4);
+        $$ = create_property($2, func_value);
+        $$->data.property.kind = KIND_METHOD;
+    }
 
 property_name:
     identifier_name { $$ = $1; }
 |   STRING_LITERAL { $$ = create_literal_node(LITERAL_STRING, $1); }
 |   NUMERIC_LITERAL { $$ = create_literal_node(LITERAL_NUMBER, $1); }
 
-
 array_expression:
     LBRACK RBRACK { $$ = create_array_expression(nodelist_create()); }
 |   LBRACK element_list RBRACK { $$ = create_array_expression($2); }
+|   LBRACK element_list COMMA RBRACK { $$ = create_array_expression($2); }
 
 element_list:
     assignment_expression
     { $$ = nodelist_create(); nodelist_append($$, $1); }
+|   SPREAD assignment_expression
+    { $$ = nodelist_create(); nodelist_append($$, create_spread_element($2)); }
 |   element_list COMMA assignment_expression
     { nodelist_append($1, $3); $$ = $1; }
+|   element_list COMMA SPREAD assignment_expression
+    { nodelist_append($1, create_spread_element($4)); $$ = $1; }
 |   element_list COMMA { $$ = $1; }
 
 arrow_function_expression:
     LPAREN arrow_parameter_list RPAREN ARROW arrow_body
     { $$ = create_arrow_function_expression($2, $5, ($5->type != NODE_BLOCK_STATEMENT)); }
-|   IDENTIFIER ARROW arrow_body
+|   binding_identifier ARROW arrow_body
     {
         NodeList* params = nodelist_create();
-        nodelist_append(params, create_identifier_node($1));
+        nodelist_append(params, $1);
         $$ = create_arrow_function_expression(params, $3, ($3->type != NODE_BLOCK_STATEMENT));
     }
+|   ASYNC LPAREN arrow_parameter_list RPAREN ARROW arrow_body
+    { $$ = create_arrow_function_expression($3, $6, ($6->type != NODE_BLOCK_STATEMENT)); }
+|   ASYNC binding_identifier ARROW arrow_body
+    {
+        NodeList* params = nodelist_create();
+        nodelist_append(params, $2);
+        $$ = create_arrow_function_expression(params, $4, ($4->type != NODE_BLOCK_STATEMENT));
+    }
 
-/* [修复] 重构此规则以消除 'identifier_list: IDENTIFIER' 冲突 */
 arrow_parameter_list:
     /* empty */ 
     { $$ = nodelist_create(); }
-|   IDENTIFIER
-    { 
-        $$ = nodelist_create(); 
-        nodelist_append($$, create_identifier_node($1)); 
-    }
-|   arrow_parameter_list COMMA IDENTIFIER
-    { 
-        nodelist_append($1, create_identifier_node($3)); 
-        $$ = $1; 
-    }
+|   binding_element_list { $$ = $1; }
 
 arrow_body:
     block_statement { $$ = $1; }
 |   assignment_expression { $$ = $1; }
 
-/* [移除] 'identifier_list' 规则已被合并到 'arrow_parameter_list' */
-
 %%
-
-/* 辅助函数区 (移除 ASI 包装器) */
-
-/* 注意: 'yylex' 现在直接由 lexer.re 提供。*/
-/* yyerror 在 main.c 中定义 */

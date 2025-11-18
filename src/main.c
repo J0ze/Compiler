@@ -9,6 +9,9 @@
 ParserState *scanner;
 ASTNode *ast_root;
 
+// 错误状态追踪
+static int has_error = 0; // 0: 无错误, 1: 已报错
+
 // yyparse 和 yyerror 的声明
 int yyparse(ParserState* state);
 void yyerror(YYLTYPE *yyllocp, ParserState *state, const char *s);
@@ -43,27 +46,26 @@ char* read_file(const char *filename, size_t *size) {
 
 int main(int argc, char **argv) {
     // 1. 初始化内存池
-    pool_init(); // <--- 必须调用
+    pool_init(); 
 
     if (argc < 2) {
-        // ... (错误处理) ...
+        fprintf(stderr, "Usage: %s <filename>\n", argv[0]);
+        return 1;
     }
 
     // 2. 读取文件
     size_t size;
     char *buffer = read_file(argv[1], &size);
-    // ... (错误处理) ...
-
-    // 3. 初始化 ParserState (无 ASI 版本)
+    if (!buffer) {
+        fprintf(stderr, "Failed to read file: %s\n", argv[1]);
+        return 1;
+    }
     ParserState s;
     s.cursor = (const unsigned char*)buffer;
     s.limit = (const unsigned char*)buffer + size;
     s.marker = (const unsigned char*)buffer;
     s.line = 1;
     
-    // (已移除 ASI 字段)
-    
-    // 保留括号深度 (如果 re2c 需要)
     s.brace_depth = 0;
     s.bracket_depth = 0;
     s.paren_depth = 0;
@@ -71,8 +73,7 @@ int main(int argc, char **argv) {
 
     scanner = &s;
     ast_root = NULL;
-
-    // 4. 运行解析
+    has_error = 0;
     int result = yyparse(scanner);
     
     if (result == 0) {
@@ -83,15 +84,14 @@ int main(int argc, char **argv) {
     } else {
         printf("Parse failed.\n");
     }
-
-    // 5. 清理
-    pool_free_all(); // 释放内存池
-    free(buffer);    // 释放文件缓冲区
+    pool_free_all(); 
+    free(buffer);    
 
     return result;
 }
-
-// 错误处理函数
 void yyerror(YYLTYPE *yyllocp, ParserState *state, const char *s) {
+    if (has_error) return;
+    
     fprintf(stderr, "Parse error: %s at line %d\n", s, yyllocp ? yyllocp->first_line : (state ? state->line : -1));
+    has_error = 1;
 }

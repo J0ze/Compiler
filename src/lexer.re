@@ -1,17 +1,13 @@
-/* src/lexer.re - 移除了 ASI 逻辑 */
+/* src/lexer.re - Fixed Infinite Loop */
 #include <stdio.h>
 #include <string.h> 
 #include <stdbool.h>
 #include "common.h"     
 #include "ast.h"        
 #include "parser.tab.h" 
-#include "pool.h" // 包含 pool.h 以便使用 pool_strdup
+#include "pool.h" 
 
-/*
- * 辅助函数：判断前一个 token 是否允许后面跟一个除法运算符 (/)
- * 而不是一个正则表达式。
- */
-static int global_last_token = 0; // 用于辅助词法分析器
+static int global_last_token = 0; 
 
 static bool can_precede_division(int token) {
     switch (token) {
@@ -23,25 +19,46 @@ static bool can_precede_division(int token) {
         case FALSE_LITERAL:
         case NULL_LITERAL:
         case THIS:
-        case RPAREN: // )
-        case RBRACK: // ]
-        case RBRACE: // }
-        case INC:    // ++
-        case DEC:    // --
+        case RPAREN: 
+        case RBRACK: 
+        case RBRACE: 
+        case INC:    
+        case DEC:
+        case PRIVATE_IDENTIFIER:
             return true;
         default:
             return false;
     }
 }
 
-/*
- * 主词法分析函数 (yylex)
- * 它被 parser.y 中的 %lex-param 和 %parse-param 调用。
- */
+static bool should_insert_semicolon(int last_token) {
+    switch (last_token) {
+        case IDENTIFIER:
+        case NUMERIC_LITERAL:
+        case STRING_LITERAL:
+        case REGEX_LITERAL:
+        case TRUE_LITERAL:
+        case FALSE_LITERAL:
+        case NULL_LITERAL:
+        case THIS:
+        case RPAREN:
+        case RBRACK:
+        case RBRACE:
+        case BREAK:
+        case CONTINUE:
+        case RETURN:
+        case THROW:
+        case YIELD:
+        case PRIVATE_IDENTIFIER:
+            return true;
+        default:
+            return false;
+    }
+}
+
 int yylex(YYSTYPE *yylval, YYLTYPE *yylloc, ParserState *state) {
-    const unsigned char *yyt1; // re2c 标记
+    const unsigned char *yyt1; 
     
-    // 设置行号
     if (yylloc) {
         yylloc->first_line = state->line;
         yylloc->last_line = state->line;
@@ -58,20 +75,29 @@ yyc_start:
         re2c:encoding:utf8 = 1;
         re2c:eof = 0;
 
-        // 1. 空白字符 (跳过)
         [ \t\v\f\u0020\u00A0\uFEFF]+ { goto yyc_start; }
         
-        // 2. 换行符 (只增加行号，不生成 Token)
         ( ( "\r\n" ) | [ \n\r\u2028\u2029 ] ) {
             state->line++;
             if (yylloc) yylloc->last_line = state->line;
+            
+            if (should_insert_semicolon(global_last_token)) {
+                const unsigned char *p = state->cursor;
+                while (p < state->limit && (*p == ' ' || *p == '\t')) p++;
+                // [修复] 防止死循环：如果下一个字符就是分号，不要插入
+                if (p < state->limit && 
+                    (*p != ';' && *p != '.' && *p != '(' && *p != '[' && 
+                     *p != ',' && *p != '+' && *p != '-' && 
+                     *p != '*' && *p != '/' && *p != '%')) {
+                     return SEMICOLON;
+                }
+            }
             goto yyc_start;
         }
         
-        // 3. 注释
         "/*" {
             for (;;) {
-                if (state->cursor >= state->limit) break; // EOF in comment
+                if (state->cursor >= state->limit) break;
                 if (*state->cursor == '\n') {
                     state->line++;
                     if (yylloc) yylloc->last_line = state->line;
@@ -92,7 +118,6 @@ yyc_start:
             goto yyc_start;
         }
         
-        // --- 4. 符号与运算符 ---
         "{" { global_last_token = LBRACE; return LBRACE; }
         "}" { global_last_token = RBRACE; return RBRACE; }
         "(" { global_last_token = LPAREN; return LPAREN; }
@@ -141,7 +166,6 @@ yyc_start:
         "=>" { global_last_token = ARROW; return ARROW; }
         "..." { global_last_token = SPREAD; return SPREAD; }
 
-        // --- 5. 关键字 (自动机匹配) ---
         "break"     { global_last_token = BREAK; return BREAK; }
         "case"      { global_last_token = CASE; return CASE; }
         "catch"     { global_last_token = CATCH; return CATCH; }
@@ -179,6 +203,8 @@ yyc_start:
         "static"    { global_last_token = STATIC; return STATIC; }
         "enum"      { global_last_token = ENUM; return ENUM; }
         "await"     { global_last_token = AWAIT; return AWAIT; }
+        "get"       { global_last_token = GET; return GET; }
+        "set"       { global_last_token = SET; return SET; }
         "from"      { global_last_token = FROM; return FROM; }
         "as"        { global_last_token = AS; return AS; }
         "of"        { global_last_token = OF; return OF; }
@@ -187,96 +213,87 @@ yyc_start:
         "false"     { global_last_token = FALSE_LITERAL; return FALSE_LITERAL; }
         "null"      { global_last_token = NULL_LITERAL; return NULL_LITERAL; }
 
-        // --- 6. 字面量 ---
-        
-        // 标识符 (必须在关键字之后)
+        @yyt1 "#" [a-zA-Z_$\x80-\xff][a-zA-Z0-9_$\x80-\xff]* {
+            yylval->str_val = pool_strndup((const char*)yyt1, state->cursor - yyt1);
+            global_last_token = PRIVATE_IDENTIFIER;
+            return PRIVATE_IDENTIFIER;
+        }
+
         @yyt1 [a-zA-Z_$\x80-\xff][a-zA-Z0-9_$\x80-\xff]* {
             yylval->str_val = pool_strndup((const char*)yyt1, state->cursor - yyt1);
             global_last_token = IDENTIFIER;
             return IDENTIFIER;
         }
 
-        // 数值 (支持 Decimal 和 Scientific)
         @yyt1 (("0" | [1-9][0-9]*) ("." [0-9]*)? | "." [0-9]+) ([eE] [+-]? [0-9]+)? {
             yylval->str_val = pool_strndup((const char*)yyt1, state->cursor - yyt1);
             global_last_token = NUMERIC_LITERAL;
             return NUMERIC_LITERAL;
         }
-        // 十六进制
+        
         @yyt1 "0" [xX] [0-9a-fA-F]+ {
             yylval->str_val = pool_strndup((const char*)yyt1, state->cursor - yyt1);
             global_last_token = NUMERIC_LITERAL;
             return NUMERIC_LITERAL;
         }
 
-        // 字符串 (单引号)
         @yyt1 "'" ([^'\\\r\n] | "\\".)* "'" {
             yylval->str_val = pool_strndup((const char*)yyt1, state->cursor - yyt1);
             global_last_token = STRING_LITERAL;
             return STRING_LITERAL;
         }
-        // 字符串 (双引号)
+        
         @yyt1 '"' ([^"\\\r\n] | "\\".)* '"' {
             yylval->str_val = pool_strndup((const char*)yyt1, state->cursor - yyt1);
             global_last_token = STRING_LITERAL;
             return STRING_LITERAL;
         }
-        // 模板字符串 (反引号 - 简化版)
+        
         @yyt1 "`" ([^`\\] | "\\".)* "`" {
             yylval->str_val = pool_strndup((const char*)yyt1, state->cursor - yyt1);
-            global_last_token = STRING_LITERAL; // 暂时作为普通字符串
+            global_last_token = STRING_LITERAL; 
             return STRING_LITERAL; 
         }
 
-        // --- 7. 除法与正则的歧义处理 ---
         "/" {
             if (can_precede_division(global_last_token)) {
-                // 是除法
                 global_last_token = DIV;
                 return DIV;
             } else {
-                // 是正则表达式
                 const unsigned char *start = state->cursor - 1; 
-                bool in_class = false; // [
-                
+                bool in_class = false;
                 while (state->cursor < state->limit) {
                     unsigned char c = *state->cursor;
-                    if (c == '\n' || c == '\r') break; // 换行，正则错误
+                    if (c == '\n' || c == '\r') break; 
                     if (c == '\\') { 
-                        state->cursor++; // 跳过转义字符
+                        state->cursor++;
                         if (state->cursor < state->limit) state->cursor++; 
                         continue; 
                     }
                     if (c == '[') in_class = true;
                     else if (c == ']') in_class = false;
                     else if (c == '/' && !in_class) { 
-                        state->cursor++; // 匹配到结尾的 '/'
+                        state->cursor++; 
                         break; 
                     }
                     state->cursor++;
                 }
-                
-                // 匹配 flags (g, i, m, s, u, y)
                 while (state->cursor < state->limit) {
                     unsigned char c = *state->cursor;
-                    // 仅允许合法的 flag 字符
                     if (c == 'g' || c == 'i' || c == 'm' || c == 's' || c == 'u' || c == 'y') {
                         state->cursor++;
                     } else {
                         break;
                     }
                 }
-                
                 yylval->str_val = pool_strndup((const char*)start, state->cursor - start);
                 global_last_token = REGEX_LITERAL;
                 return REGEX_LITERAL;
             }
         }
 
-        // --- 8. EOF 和 错误 ---
         $ { return 0; }
         
-        // 错误：跳过无法识别的字符
         * { 
             state->cursor++;
             goto yyc_start;
