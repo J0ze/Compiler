@@ -1,0 +1,12 @@
+=== JavaScript Parser Test Report ===
+Date: 2025年11月18日 星期二 11时21分29秒 CST
+Test Root: tests/big_benchmark
+-------------------------------------
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+FILE: tests/big_benchmark/valid/test.js
+----------------------------------------
+Parse error: syntax error at line 5
+Parse failed.
+RESULT: PARSE ERROR (Exit Code: 1)
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
