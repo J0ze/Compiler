@@ -16,7 +16,7 @@ BUILD_DIR = build
 INCLUDE_DIR = include
 
 # 源文件
-C_SOURCES = $(SRC_DIR)/main.c $(SRC_DIR)/ast.c
+C_SOURCES = $(SRC_DIR)/main.c $(SRC_DIR)/ast.c $(SRC_DIR)/pool.c
 RE_SOURCE = $(SRC_DIR)/lexer.re
 Y_SOURCE = $(SRC_DIR)/parser.y
 
@@ -26,7 +26,7 @@ PARSER_C = $(BUILD_DIR)/parser.tab.c
 PARSER_H = $(BUILD_DIR)/parser.tab.h
 
 # 目标文件
-OBJECTS = $(BUILD_DIR)/main.o $(BUILD_DIR)/ast.o $(BUILD_DIR)/lexer.o $(BUILD_DIR)/parser.tab.o
+OBJECTS = $(BUILD_DIR)/main.o $(BUILD_DIR)/ast.o $(BUILD_DIR)/pool.o $(BUILD_DIR)/lexer.o $(BUILD_DIR)/parser.tab.o
 TARGET = $(BUILD_DIR)/js_parser
 
 .PHONY: all clean test
@@ -70,6 +70,10 @@ $(LEXER_C): $(RE_SOURCE)
 $(PARSER_C) $(PARSER_H): $(Y_SOURCE) $(INCLUDE_DIR)/ast.h
 	@mkdir -p $(@D)
 	$(BISON) $(BISONFLAGS) --output=$(PARSER_C) $<
+
+$(BUILD_DIR)/pool.o: $(SRC_DIR)/pool.c $(INCLUDE_DIR)/pool.h
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -I$(BUILD_DIR) -c $< -o $@
 
 clean:
 	rm -rf $(BUILD_DIR)

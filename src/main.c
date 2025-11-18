@@ -1,19 +1,17 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>     // <-- 修复 1: 为 memset 添加
+#include <string.h>  
 #include "common.h"
 #include "ast.h"
-#include "parser.tab.h" // <-- 修复 2: 为 YYSTYPE 和 yyparse 原型添加
+#include "parser.tab.h" 
+#include "pool.h"
 
-// 定义 parser.y 中声明的全局变量
 ParserState *scanner;
 ASTNode *ast_root;
 int yyparse(ParserState* state);
-// yyparse() 的原型现在在 parser.tab.h 中
-// extern int yyparse(); // <-- 修复 3: 移除这个不正确的声明
 
-// main 函数
 int main(int argc, char **argv) {
+    pool_init();
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <filename.js>\n", argv[0]);
         return 1;
@@ -81,15 +79,11 @@ int main(int argc, char **argv) {
         printf("Parse failed.\n");
     }
 
-    // 清理
-    free_ast(ast_root);
+    pool_free_all();
     free(buffer);
 
     return result;
 }
-
-// 错误报告函数 (parser.y 需要)
-// #include "parser.tab.h" // <-- 修复 4: 已经移到顶部，这里不再需要
 
 void yyerror(YYLTYPE *yyllocp, ParserState *state, const char *s) {
     fprintf(stderr, "Parse error: %s at line %d\n", s, yyllocp ? yyllocp->first_line : (state ? state->line : -1));

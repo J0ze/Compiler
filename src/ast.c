@@ -1,8 +1,9 @@
 #include "ast.h"
 #include <stdlib.h>
 #include <string.h>
-#include "parser.tab.h" // <-- 添加这一行, 否则 RBRACE 未定义.
+#include "parser.tab.h"
 #include "common.h"
+#include "pool.h" 
 extern ParserState *scanner;
 //列表创建函数
 NodeList* nodelist_create(void) {
@@ -22,13 +23,8 @@ NodeList* nodelist_create(void) {
 }
 // 内部辅助函数：创建一个基础节点
 static ASTNode* create_base_node(NodeType type) {
-    ASTNode *node = (ASTNode*)malloc(sizeof(ASTNode));
-    if (!node) {
-        yyerror(NULL, scanner, "Out of memory");
-        exit(1);
-    }
+    ASTNode *node = (ASTNode*)pool_alloc(sizeof(ASTNode));
     node->type = type;
-    node->line = scanner ? scanner->line : -1; // 尽可能记录行号
     node->next = NULL;
     return node;
 }
