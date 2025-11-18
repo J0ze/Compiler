@@ -63,6 +63,12 @@ int main(int argc, char **argv) {
     scanner = &s;
     ast_root = NULL;
 
+    // 初始化括号深度
+    s.brace_depth = 0;
+    s.bracket_depth = 0;
+    s.paren_depth = 0;
+    s.in_object_literal = false;
+    
     // 调用解析器
     int result = yyparse(scanner); // <-- 这一行现在可以工作了
     

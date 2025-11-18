@@ -3145,7 +3145,98 @@ yyreturn:
 
 #line 731 "src/parser.y"
 
-/* 辅助函数：是否为受限关键字？ */
+static void update_bracket_depth(ParserState* state, int token) {
+    switch (token) {
+        case LBRACE:
+            state->brace_depth++;
+            break;
+        case RBRACE:
+            if (state->brace_depth > 0) state->brace_depth--;
+            // 离开花括号作用域，清除对象字面量标记
+            if (state->brace_depth == 0) state->in_object_literal = false;
+            break;
+        case LBRACK:
+            state->bracket_depth++;
+            break;
+        case RBRACK:
+            if (state->bracket_depth > 0) state->bracket_depth--;
+            break;
+        case LPAREN:
+            state->paren_depth++;
+            break;
+        case RPAREN:
+            if (state->paren_depth > 0) state->paren_depth--;
+            break;
+        case COLON:
+            // 看到冒号，可能在对象字面量中
+            if (state->brace_depth > 0) {
+                state->in_object_literal = true;
+            }
+            break;
+        case SEMICOLON:
+        case TOK_VIRTUAL_SEMICOLON:
+            // 语句结束，清除对象字面量标记
+            state->in_object_literal = false;
+            break;
+    }
+}
+
+static bool should_suppress_asi(ParserState* state, int next_token) {
+    // 规则1: 在某些 last_token 之后总是抑制
+    if (state->last_token == SEMICOLON || 
+        state->last_token == TOK_VIRTUAL_SEMICOLON ||
+        state->last_token == LBRACE ||
+        state->last_token == LPAREN ||
+        state->last_token == LBRACK ||
+        state->last_token == COMMA ||       // 逗号后面，如对象/数组元素之间
+        state->last_token == COLON ||       // 冒号后面，如对象属性名后
+        state->last_token == 0)
+    {
+        fprintf(stderr, "[DEBUG] suppress_asi: rule 1 triggered (last_token=%d)\n", state->last_token);
+        return true;
+    }
+    
+    // 规则2: 类成员定义
+    // 在类体中，方法定义之间不需要分隔符
+    // 当 last_token 是 RBRACE（方法结束）且 next_token 是类成员关键字时，抑制 ASI
+    if (state->last_token == RBRACE) {
+        fprintf(stderr, "[DEBUG] suppress_asi: last_token is RBRACE, next_token=%d\n", next_token);
+        fprintf(stderr, "[DEBUG] Checking: STATIC=%d, IDENTIFIER=%d, RBRACE=%d\n", STATIC, IDENTIFIER, RBRACE);
+        if (next_token == STATIC ||      // static 方法
+            next_token == IDENTIFIER ||  // 普通方法名
+            next_token == STRING_LITERAL || // 计算属性名
+            next_token == NUMERIC_LITERAL || // 计算属性名
+            next_token == LBRACK ||      // 计算属性名 [expr]
+            next_token == RBRACE)        // 类定义结束
+        {
+            fprintf(stderr, "[DEBUG] suppress_asi: rule 2 triggered (class member)\n");
+            return true;
+        }
+    }
+    
+    // 规则3: 右花括号的特殊处理
+    // 如果我们在对象字面量中（最近看到过冒号），则抑制 ASI
+    if (next_token == RBRACE && state->in_object_literal && state->brace_depth > 0) {
+        fprintf(stderr, "[DEBUG] suppress_asi: rule 3 triggered (object literal)\n");
+        return true;
+    }
+    
+    // 规则4: 在数组字面量内部，右方括号不触发 ASI
+    if (next_token == RBRACK && state->bracket_depth > 0) {
+        fprintf(stderr, "[DEBUG] suppress_asi: rule 4 triggered (array literal)\n");
+        return true;
+    }
+    
+    // 规则5: 在括号表达式内部，右圆括号不触发 ASI
+    if (next_token == RPAREN && state->paren_depth > 0) {
+        fprintf(stderr, "[DEBUG] suppress_asi: rule 5 triggered (paren expr)\n");
+        return true;
+    }
+    
+    fprintf(stderr, "[DEBUG] suppress_asi: no rule matched, returning false\n");
+    return false;
+}
+
 static bool is_restricted_keyword(int token) {
     switch (token) {
         case RETURN:
@@ -3160,21 +3251,14 @@ static bool is_restricted_keyword(int token) {
     }
 }
 
-/* 辅助函数：此标记是否会“冒犯”一个表达式？ */
 static bool is_offending_token(int token) {
     // 白名单策略：只有这些标记可以合法地跟在一个表达式后面
     switch (token) {
-        case '(':
-        case '[':
-        case '.':
-        case '+':
-        case '-':
-        case '*':
-        case '%':
-        case '/':
-        case '?':
-        case ':':
-        case ',':
+        // 二元操作符
+        case PLUS:
+        case MINUS:
+        case MUL:
+        case MOD:
         case POWER:
         case LT:
         case GT:
@@ -3193,108 +3277,111 @@ static bool is_offending_token(int token) {
         case BIT_AND:
         case BIT_OR:
         case BIT_XOR:
+        case IN:
+        case INSTANCEOF:
+        
+        // 赋值操作符
         case ASSIGN:
         case ADD_ASSIGN:
         case SUB_ASSIGN:
         case MUL_ASSIGN:
         case POWER_ASSIGN:
-        case IDENTIFIER: 
-        case NUMERIC_LITERAL:
-        case STRING_LITERAL:
-        case TRUE_LITERAL:
-        case FALSE_LITERAL:
-        case NULL_LITERAL:
-        case RPAREN:
-        case RBRACK:
-        case RBRACE:
-        case FUNCTION:
-        case CLASS:
-        case IF:
-        case FOR:
-        case WHILE:
-        case DO:
-        case SWITCH:
-        case TRY:
-        case RETURN:
-        case BREAK:
-        case CONTINUE:
-        case THROW:
-        case STATIC:
-        case CONST:
-        case LET:
-        case VAR:
-            return false;
+        
+        // 成员访问和调用
+        case DOT:
+        case LBRACK:
+        case LPAREN:
+        
+        // 其他
+        case CONDITIONAL:
+        case COLON:
+        case COMMA:
+        case INC:
+        case DEC:
+            return false; // 不是冒犯性标记
+
+        // 其他所有标记都是"冒犯性"的（包括右括号、关键字、标识符、字面量）
         default:
             return true;
     }
 }
 
-/* yylex 包装器 (ASI 引擎) */
+/* 在 yylex 函数中添加调试输出 */
+
 int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state) {
-    
-    /* * --- 修复：更新位置跟踪 (Bison %locations) ---
-     * 在我们做任何事情之前，更新 yyllocp。
-     * 这是一个基本的实现；更复杂的实现会跟踪列。
-     */
     yyllocp->first_line = state->line;
     yyllocp->last_line = state->line;
+    
+    fprintf(stderr, "[DEBUG] yylex: line=%d, brace=%d, bracket=%d, paren=%d, last_token=%d, has_newline=%d\n",
+            state->line, state->brace_depth, state->bracket_depth, state->paren_depth, 
+            state->last_token, state->has_seen_newline);
+    
     if (state->has_buffered_token) {
         state->has_buffered_token = false;
-        state->last_token = state->buffered_token;
+        int token = state->buffered_token;
+        state->last_token = token;
+        *yylvalp = state->buffered_yylval;
+        memset(&state->buffered_yylval, 0, sizeof(YYSTYPE));
         
-        *yylvalp = state->buffered_yylval; // <--- 修复 1: 恢复保存的值
-        memset(&state->buffered_yylval, 0, sizeof(YYSTYPE)); // 清空缓冲区
+        // 更新深度（对于缓冲的 token）
+        update_bracket_depth(state, token);
         
-        return state->buffered_token;
+        fprintf(stderr, "[DEBUG] Returning buffered token: %d, new_brace=%d\n", token, state->brace_depth);
+        return token;
     }
 
-    // 2. 获取下一个“原始”标记
     int next_token = yylex_internal(yylvalp, state);
-    
-    /* * 在我们返回之前，再次更新 yyllocp 的 "last_line" 
-     * 因为 yylex_internal 可能已经改变了 state->line 
-     */
     yyllocp->last_line = state->line;
+    
+    fprintf(stderr, "[DEBUG] Got next_token: %d, has_newline=%d\n", next_token, state->has_seen_newline);
 
-
-    // 3. 受限产生式检查
-    // (如果上一个 token 是受限的，并且我们看到了换行)
+    // 受限产生式检查
     if (is_restricted_keyword(state->last_token) && state->has_seen_newline) {
+        fprintf(stderr, "[DEBUG] Restricted keyword ASI\n");
         state->buffered_token = next_token;
-        state->buffered_yylval = *yylvalp; // <--- 修复 2: 保存 yylval
+        state->buffered_yylval = *yylvalp;
         state->has_buffered_token = true;
-        state->has_seen_newline = false; // “消耗”换行符
+        state->has_seen_newline = false;
         state->last_token = TOK_VIRTUAL_SEMICOLON;
         memset(yylvalp, 0, sizeof(YYSTYPE));
         return TOK_VIRTUAL_SEMICOLON;
     }
 
-    // 4. 通用 ASI 规则 1, 2, 3
+    // 通用 ASI 规则
     bool asi_rule_1 = state->has_seen_newline && is_offending_token(next_token);
-    bool asi_rule_3 = (next_token == 0);      // 0 是 EOF (文件结尾)
+    bool asi_rule_3 = (next_token == 0);
+    
     if (asi_rule_1 || asi_rule_3) {
-        if (state->last_token == SEMICOLON || 
-            state->last_token == TOK_VIRTUAL_SEMICOLON ||
-            state->last_token == LBRACE ||
-            state->last_token == 0)
-        {
-            // 不执行 ASI，继续（这将导致下一轮的 next_token 被正常处理）
+        bool suppress_asi = should_suppress_asi(state, next_token);
+        
+        fprintf(stderr, "[DEBUG] ASI check: rule_1=%d, rule_3=%d, suppress=%d\n", 
+                asi_rule_1, asi_rule_3, suppress_asi);
+        
+        if (suppress_asi) {
+            fprintf(stderr, "[DEBUG] ASI suppressed\n");
+            // 不执行 ASI
         }
         else {
-            // (我们尚未实现 'for' 循环状态，所以跳过)
-
+            fprintf(stderr, "[DEBUG] Inserting virtual semicolon\n");
             // 插入虚拟分号
             state->buffered_token = next_token;
-            state->buffered_yylval = *yylvalp; // <--- 修复 3: 保存 yylval
+            state->buffered_yylval = *yylvalp;
             state->has_buffered_token = true;
-            state->has_seen_newline = false; // “消耗”换行符
+            state->has_seen_newline = false;
             state->last_token = TOK_VIRTUAL_SEMICOLON;
-
             memset(yylvalp, 0, sizeof(YYSTYPE));
             return TOK_VIRTUAL_SEMICOLON;
         }
     }
-    state->has_seen_newline = false; 
+    
+    state->has_seen_newline = false;
+    
+    // 更新深度（在更新 last_token 之前）
+    update_bracket_depth(state, next_token);
+    
+    fprintf(stderr, "[DEBUG] Updated depth: brace=%d, bracket=%d, paren=%d\n",
+            state->brace_depth, state->bracket_depth, state->paren_depth);
+    
     state->last_token = next_token;  
     return next_token;
 }

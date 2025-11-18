@@ -24,7 +24,13 @@ typedef struct {
     int  last_token;         
     int  buffered_token;     
     YYSTYPE buffered_yylval; // <--- 添加这一行来保存 token 的值
-    bool has_buffered_token; 
+    bool has_buffered_token;    
+
+    // --- 括号深度追踪 ---
+    int brace_depth;    // { } 深度
+    int bracket_depth;  // [ ] 深度
+    int paren_depth;    // ( ) 深度
+    bool in_object_literal;
 
 } ParserState;
 
