@@ -60,7 +60,8 @@ typedef enum {
     LITERAL_STRING,
     LITERAL_TRUE,
     LITERAL_FALSE,
-    LITERAL_NULL
+    LITERAL_NULL,
+    LITERAL_REGEX
 } LiteralType;
 
 // 二元操作符
@@ -71,7 +72,7 @@ typedef enum {
     OP_LT, OP_LE, OP_GT, OP_GE, OP_IN, OP_INSTANCEOF,
     OP_LSHIFT, OP_RSHIFT, OP_URSHIFT,
     OP_PLUS, OP_MINUS,
-    OP_MUL, OP_MOD, OP_POWER
+    OP_MUL, OP_MOD, OP_POWER, OP_DIV
 } BinaryOpType;
 
 // 方法定义类型

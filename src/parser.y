@@ -49,14 +49,15 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 
 /* 终结符 (Tokens) */
 %token <str_val> IDENTIFIER STRING_LITERAL NUMERIC_LITERAL
+%token <str_val> REGEX_LITERAL
 
 /* Punctuators */
 %token LBRACE RBRACE LPAREN RPAREN LBRACK RBRACK DOT SEMICOLON COMMA
 %token LT GT LE GE EQ NE STRICT_EQ STRICT_NE
-%token PLUS MINUS MUL MOD POWER INC DEC
+%token PLUS MINUS MUL MOD POWER INC DEC DIV
 %token LSHIFT RSHIFT URSHIFT BIT_AND BIT_OR BIT_XOR NOT BIT_NOT
 %token LOGICAL_AND LOGICAL_OR NULLISH_COALESCING
-%token CONDITIONAL COLON ASSIGN ADD_ASSIGN SUB_ASSIGN MUL_ASSIGN POWER_ASSIGN
+%token CONDITIONAL COLON ASSIGN ADD_ASSIGN SUB_ASSIGN MUL_ASSIGN POWER_ASSIGN DIV_ASSIGN
 %token ARROW SPREAD
 
 /* Keywords */
@@ -164,7 +165,7 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 %left LT LE GT GE IN INSTANCEOF
 %left LSHIFT RSHIFT URSHIFT
 %left PLUS MINUS
-%left MUL MOD
+%left MUL DIV MOD
 %right POWER
 %right NEW NOT BIT_NOT TYPEOF VOID DELETE AWAIT
 %right INC DEC // 前缀自增/自减
@@ -593,6 +594,8 @@ assignment_expression:
     { $$ = create_assignment_expr(OP_PLUS, $1, $3); } /* 示例: 可扩展 */
 |   left_hand_side_expression SUB_ASSIGN assignment_expression
     { $$ = create_assignment_expr(OP_MINUS, $1, $3); } /* 示例: 可扩展 */
+|   left_hand_side_expression DIV_ASSIGN assignment_expression
+    { $$ = create_assignment_expr(OP_DIV, $1, $3); }
 
 
 conditional_expression:
@@ -686,6 +689,8 @@ multiplicative_expression:
     { $$ = create_binary_expr(OP_MOD, $1, $3); }
 |   multiplicative_expression POWER unary_expression
     { $$ = create_binary_expr(OP_POWER, $1, $3); }
+|   multiplicative_expression DIV unary_expression
+    { $$ = create_binary_expr(OP_DIV, $1, $3); }
 
 unary_expression:
     update_expression
@@ -786,6 +791,8 @@ primary_expression:
     { $$ = $1; }
 |   SUPER
     { $$ = create_super_node(); }
+|   REGEX_LITERAL
+    { $$ = create_literal_node(LITERAL_REGEX, $1); }
 
 object_expression:
     LBRACE RBRACE

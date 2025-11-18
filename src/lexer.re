@@ -10,6 +10,25 @@
 int yylex_internal(YYSTYPE *yylval, ParserState *state) {
     const unsigned char *yyt1; // re2c 用于捕获文本的指针
 
+static bool can_precede_division(int token) {
+    switch (token) {
+        case IDENTIFIER:
+        case NUMERIC_LITERAL:
+        case STRING_LITERAL:
+        case REGEX_LITERAL: // 正则后面也可以跟除号
+        case TRUE_LITERAL:
+        case FALSE_LITERAL:
+        case NULL_LITERAL:
+        case THIS:
+        case RPAREN: // ) / 2
+        case RBRACK: // ] / 2
+        case RBRACE: // } / 2 (有些歧义，但在大多数表达式上下文中是除号)
+            return true;
+        default:
+            return false;
+    }
+}
+
 yyc_start: // re2c 规则的起始标签
 
     /*!re2c
@@ -24,7 +43,65 @@ yyc_start: // re2c 规则的起始标签
         re2c:eof = 0;
 
         // --- 2. RULES (来自文档 5.2 节) ---
+        "/" {
+            // 检查上下文
+            if (can_precede_division(state->last_token)) {
+                return DIV;
+            } else {
+                // 进入正则扫描模式 (手动扫描以处理转义和字符类)
+                const unsigned char *start = state->cursor - 1; // 包含开头的 /
+                bool in_class = false; // 是否在 [] 中
+                
+                while (state->cursor < state->limit) {
+                    unsigned char c = *state->cursor;
+                    
+                    if (c == '\n' || c == '\r') {
+                        // JS 正则不支持未转义的换行，报错
+                        fprintf(stderr, "Lexical error: Unterminated regex at line %d\n", state->line);
+                        return 0; 
+                    }
+                    
+                    if (c == '\\') {
+                        state->cursor++; // 跳过转义字符
+                        if (state->cursor < state->limit) state->cursor++;
+                        continue;
+                    }
+                    
+                    if (c == '[') {
+                        in_class = true;
+                    } else if (c == ']') {
+                        in_class = false;
+                    } else if (c == '/' && !in_class) {
+                        state->cursor++; // 消耗结尾的 /
+                        break; // 正则主体结束
+                    }
+                    
+                    state->cursor++;
+                }
+                
+                // 扫描修饰符 (flags: g, i, m, u, y, s)
+                while (state->cursor < state->limit) {
+                    unsigned char c = *state->cursor;
+                    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+                         state->cursor++;
+                    } else {
+                        break;
+                    }
+                }
+                
+                // 创建字符串值
+                size_t len = state->cursor - start;
+                yylval->str_val = strndup((const char*)start, len);
+                return REGEX_LITERAL;
+            }
+        }
 
+        "/=" {
+            // 除法赋值 /= 只有在能接受除法的地方才有效，否则可能被误判（虽然很少见）
+            // 通常直接作为运算符返回即可，因为正则不会以 /= 开头（除非是空的正则 / =，那是语法错误）
+            return DIV_ASSIGN;
+        }
+        
         /* 仅跳过水平空白 */
         [ \t\v\f\u0020\u00A0\uFEFF]+ { 
             goto yyc_start; 

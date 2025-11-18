@@ -548,6 +548,7 @@ static const char* literal_type_to_str(LiteralType type) {
         case LITERAL_TRUE:   return "Boolean";
         case LITERAL_FALSE:  return "Boolean";
         case LITERAL_NULL:   return "Null";
+        case LITERAL_REGEX:  return "RegExp";
         default: return "Unknown";
     }
 }
@@ -557,6 +558,9 @@ static const char* bin_op_to_str(BinaryOpType op) {
         case OP_PLUS: return "+";
         case OP_MINUS: return "-";
         case OP_MUL: return "*";
+        case OP_DIV: return "/";      // <--- [新增]
+        case OP_MOD: return "%";      // 顺便确认下 MOD 是否存在
+        case OP_POWER: return "**";   // 顺便确认下 POWER 是否存在
         case OP_COMMA: return ",";
         case OP_ASSIGN: return "=";
         case OP_EQ: return "==";
@@ -567,6 +571,16 @@ static const char* bin_op_to_str(BinaryOpType op) {
         case OP_LE: return "<=";         
         case OP_GT: return ">";           
         case OP_GE: return ">=";
+        case OP_IN: return "in";
+        case OP_INSTANCEOF: return "instanceof";
+        case OP_LSHIFT: return "<<";
+        case OP_RSHIFT: return ">>";
+        case OP_URSHIFT: return ">>>";
+        case OP_BIT_AND: return "&";
+        case OP_BIT_OR: return "|";
+        case OP_BIT_XOR: return "^";
+        case OP_LOGICAL_AND: return "&&";
+        case OP_LOGICAL_OR: return "||";
         default: return "?_OP_?";
     }
 }
