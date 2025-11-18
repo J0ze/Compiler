@@ -233,6 +233,38 @@ ASTNode* create_method_definition(ASTNode *key, ASTNode *value, bool is_static) 
     return node;
 }
 
+ASTNode* create_import_declaration(ASTNode *source, NodeList *specifiers) {
+    ASTNode *node = create_base_node(NODE_IMPORT_DECLARATION);
+    node->data.import_decl.source = source;
+    node->data.import_decl.specifiers = specifiers;
+    return node;
+}
+
+ASTNode* create_import_specifier(ASTNode *imported, ASTNode *local, bool is_default, bool is_namespace) {
+    ASTNode *node = create_base_node(NODE_IMPORT_SPECIFIER);
+    node->data.import_spec.imported = imported;
+    node->data.import_spec.local = local;
+    node->data.import_spec.is_default = is_default;
+    node->data.import_spec.is_namespace = is_namespace;
+    return node;
+}
+
+ASTNode* create_export_declaration(ASTNode *declaration, NodeList *specifiers, ASTNode *source, bool is_default) {
+    ASTNode *node = create_base_node(NODE_EXPORT_DECLARATION);
+    node->data.export_decl.declaration = declaration;
+    node->data.export_decl.specifiers = specifiers;
+    node->data.export_decl.source = source;
+    node->data.export_decl.is_default = is_default;
+    return node;
+}
+
+ASTNode* create_export_specifier(ASTNode *local, ASTNode *exported) {
+    ASTNode *node = create_base_node(NODE_EXPORT_SPECIFIER);
+    node->data.export_spec.local = local;
+    node->data.export_spec.exported = exported;
+    return node;
+}
+
 ASTNode* create_super_node(void) {
     ASTNode *node = create_base_node(NODE_SUPER);
     return node;
@@ -440,6 +472,23 @@ void free_ast(ASTNode *node) {
         case NODE_METHOD_DEFINITION:
             free_ast(node->data.method_def.key);
             free_ast(node->data.method_def.value);
+            break;
+        case NODE_IMPORT_DECLARATION:
+            free_ast(node->data.import_decl.source);
+            nodelist_free(node->data.import_decl.specifiers);
+            break;
+        case NODE_IMPORT_SPECIFIER:
+            free_ast(node->data.import_spec.imported);
+            free_ast(node->data.import_spec.local);
+            break;
+        case NODE_EXPORT_DECLARATION:
+            free_ast(node->data.export_decl.declaration);
+            nodelist_free(node->data.export_decl.specifiers);
+            free_ast(node->data.export_decl.source);
+            break;
+        case NODE_EXPORT_SPECIFIER:
+            free_ast(node->data.export_spec.local);
+            free_ast(node->data.export_spec.exported);
             break;
         case NODE_SUPER:
             break; // 无子节点
@@ -720,6 +769,48 @@ void print_ast(ASTNode *node, int indent) {
             print_ast(node->data.method_def.value, indent + 2);
             break;
         }
+        case NODE_IMPORT_DECLARATION:
+            printf("ImportDeclaration\n");
+            print_indent(indent + 1); printf("source:\n");
+            print_ast(node->data.import_decl.source, indent + 2);
+            print_indent(indent + 1); printf("specifiers:\n");
+            nodelist_print(node->data.import_decl.specifiers, indent + 1);
+            break;
+        case NODE_IMPORT_SPECIFIER:
+            if (node->data.import_spec.is_namespace) {
+                printf("ImportNamespaceSpecifier\n");
+            } else if (node->data.import_spec.is_default) {
+                printf("ImportDefaultSpecifier\n");
+            } else {
+                printf("ImportSpecifier\n");
+                print_indent(indent + 1); printf("imported:\n");
+                print_ast(node->data.import_spec.imported, indent + 2);
+            }
+            print_indent(indent + 1); printf("local:\n");
+            print_ast(node->data.import_spec.local, indent + 2);
+            break;
+        case NODE_EXPORT_DECLARATION:
+            printf("ExportDeclaration (default: %s)\n", node->data.export_decl.is_default ? "true" : "false");
+            if (node->data.export_decl.declaration) {
+                print_indent(indent + 1); printf("declaration:\n");
+                print_ast(node->data.export_decl.declaration, indent + 2);
+            }
+            if (node->data.export_decl.specifiers) {
+                print_indent(indent + 1); printf("specifiers:\n");
+                nodelist_print(node->data.export_decl.specifiers, indent + 1);
+            }
+            if (node->data.export_decl.source) {
+                print_indent(indent + 1); printf("source:\n");
+                print_ast(node->data.export_decl.source, indent + 2);
+            }
+            break;
+        case NODE_EXPORT_SPECIFIER:
+            printf("ExportSpecifier\n");
+            print_indent(indent + 1); printf("local:\n");
+            print_ast(node->data.export_spec.local, indent + 2);
+            print_indent(indent + 1); printf("exported:\n");
+            print_ast(node->data.export_spec.exported, indent + 2);
+            break;
         case NODE_SUPER:
             printf("SuperExpression\n");
             break;

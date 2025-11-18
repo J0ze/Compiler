@@ -144,6 +144,8 @@ yyc_start: // re2c 规则的起始标签
         "static"    { return STATIC; }
         "enum"      { return ENUM; }
         "await"     { return AWAIT; }
+        "from"      { return FROM; }
+        "as"        { return AS; }
         "true"      { return TRUE_LITERAL; }
         "false"     { return FALSE_LITERAL; }
         "null"      { return NULL_LITERAL; }

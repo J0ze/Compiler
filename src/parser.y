@@ -62,6 +62,7 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 /* Keywords */
 %token BREAK CASE CATCH CLASS CONST CONTINUE DEBUGGER DEFAULT DELETE DO
 %token ELSE EXPORT EXTENDS FINALLY FOR FUNCTION IF IMPORT IN INSTANCEOF
+%token FROM AS
 %token NEW RETURN SUPER SWITCH THIS THROW TRY TYPEOF VAR VOID WHILE WITH
 %token YIELD LET STATIC ENUM AWAIT
 
@@ -138,6 +139,12 @@ int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, ParserState* state);
 %type <node> function_expression
 %type <node> class_declaration
 %type <node> class_body
+%type <node> import_declaration
+%type <list> import_specifier_list
+%type <node> import_specifier
+%type <node> export_declaration
+%type <list> export_specifier_list
+%type <node> export_specifier
 %type <node> method_definition
 %type <node> function_name_opt
 %type <node> switch_statement
@@ -218,6 +225,10 @@ statement:
 |   throw_statement
     { $$ = $1; }
 |   class_declaration
+    { $$ = $1; }
+|   import_declaration
+    { $$ = $1; }
+|   export_declaration
     { $$ = $1; }
 |   empty_statement /* <-- 修复: 添加空语句规则 */
     { $$ = $1; }
@@ -424,6 +435,124 @@ class_declaration:
 class_body:
     LBRACE method_definition_list RBRACE
     { $$ = create_class_body($2); }
+
+import_declaration:
+    // import "source"; (仅副作用)
+    IMPORT STRING_LITERAL StatementTerminator
+    { $$ = create_import_declaration(create_literal_node(LITERAL_STRING, $2), NULL); }
+    
+    // import { a, b as c } from "source";
+|   IMPORT LBRACE import_specifier_list RBRACE FROM STRING_LITERAL StatementTerminator
+    { $$ = create_import_declaration(create_literal_node(LITERAL_STRING, $6), $3); }
+
+    // import defaultMember from "source";
+|   IMPORT IDENTIFIER FROM STRING_LITERAL StatementTerminator
+    { 
+        NodeList *specs = nodelist_create();
+        // 默认导入: imported=NULL, local=IDENTIFIER, is_default=true
+        ASTNode *local = create_identifier_node($2);
+        ASTNode *spec = create_import_specifier(NULL, local, true, false);
+        nodelist_append(specs, spec);
+        $$ = create_import_declaration(create_literal_node(LITERAL_STRING, $4), specs); 
+    }
+    
+    // import * as ns from "source";
+|   IMPORT MUL AS IDENTIFIER FROM STRING_LITERAL StatementTerminator
+    {
+        NodeList *specs = nodelist_create();
+        ASTNode *local = create_identifier_node($4);
+        ASTNode *spec = create_import_specifier(NULL, local, false, true); // is_namespace=true
+        nodelist_append(specs, spec);
+        $$ = create_import_declaration(create_literal_node(LITERAL_STRING, $6), specs);
+    }
+
+
+import_specifier_list:
+    import_specifier
+    {
+        $$ = nodelist_create();
+        nodelist_append($$, $1);
+    }
+|   import_specifier_list COMMA import_specifier
+    {
+        nodelist_append($1, $3);
+        $$ = $1;
+    }
+
+
+import_specifier:
+    // a (简写, 等同于 a as a)
+    IDENTIFIER
+    { 
+        ASTNode *id = create_identifier_node($1);
+        // 这里的关键是: 对于简写，imported 和 local 都是同一个标识符
+        // 但我们需要两个独立的节点对象，或者在 AST 打印时处理。
+        // 为了简单，我们创建两个节点。
+        ASTNode *local = create_identifier_node($1);
+        $$ = create_import_specifier(id, local, false, false); 
+    }
+    // a as b
+|   IDENTIFIER AS IDENTIFIER
+    { 
+        $$ = create_import_specifier(create_identifier_node($1), create_identifier_node($3), false, false); 
+    }
+
+
+export_declaration:
+    // export var a = 1;
+    EXPORT variable_statement
+    { $$ = create_export_declaration($2, NULL, NULL, false); }
+    
+    // export function f() {}
+|   EXPORT function_declaration
+    { $$ = create_export_declaration($2, NULL, NULL, false); }
+
+    // export class C {}
+|   EXPORT class_declaration
+    { $$ = create_export_declaration($2, NULL, NULL, false); }
+
+    // export default expression;
+|   EXPORT DEFAULT expression StatementTerminator
+    { 
+        $$ = create_export_declaration($3, NULL, NULL, true); // is_default=true
+    }
+
+    // export { a, b as c };
+|   EXPORT LBRACE export_specifier_list RBRACE StatementTerminator
+    { $$ = create_export_declaration(NULL, $3, NULL, false); }
+    
+    // export { a } from "source";
+|   EXPORT LBRACE export_specifier_list RBRACE FROM STRING_LITERAL StatementTerminator
+    { $$ = create_export_declaration(NULL, $3, create_literal_node(LITERAL_STRING, $6), false); }
+
+
+export_specifier_list:
+    export_specifier
+    {
+        $$ = nodelist_create();
+        nodelist_append($$, $1);
+    }
+|   export_specifier_list COMMA export_specifier
+    {
+        nodelist_append($1, $3);
+        $$ = $1;
+    }
+
+
+export_specifier:
+    // a
+    IDENTIFIER
+    {
+        ASTNode *id = create_identifier_node($1);
+        ASTNode *exported = create_identifier_node($1);
+        $$ = create_export_specifier(id, exported);
+    }
+    // a as b
+|   IDENTIFIER AS IDENTIFIER
+    {
+        $$ = create_export_specifier(create_identifier_node($1), create_identifier_node($3));
+    }
+
 
 method_definition_list:
     /* empty */

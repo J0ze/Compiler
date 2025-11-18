@@ -1,3 +1,11 @@
+import "polyfills";
+import React from "react";
+import { Component, useState as useMyState } from "react";
+import * as utils from "./utils";
+
+export const PI = 3.14;
+export default function() { return 1; };
+export { React, utils as myUtils };
 function myTest() {
     let a = 1;
     if (a > 0) {

@@ -106,28 +106,30 @@
      IMPORT = 322,
      IN = 323,
      INSTANCEOF = 324,
-     NEW = 325,
-     RETURN = 326,
-     SUPER = 327,
-     SWITCH = 328,
-     THIS = 329,
-     THROW = 330,
-     TRY = 331,
-     TYPEOF = 332,
-     VAR = 333,
-     VOID = 334,
-     WHILE = 335,
-     WITH = 336,
-     YIELD = 337,
-     LET = 338,
-     STATIC = 339,
-     ENUM = 340,
-     AWAIT = 341,
-     TRUE_LITERAL = 342,
-     FALSE_LITERAL = 343,
-     NULL_LITERAL = 344,
-     TOK_VIRTUAL_SEMICOLON = 345,
-     UPOSTFIX = 346
+     FROM = 325,
+     AS = 326,
+     NEW = 327,
+     RETURN = 328,
+     SUPER = 329,
+     SWITCH = 330,
+     THIS = 331,
+     THROW = 332,
+     TRY = 333,
+     TYPEOF = 334,
+     VAR = 335,
+     VOID = 336,
+     WHILE = 337,
+     WITH = 338,
+     YIELD = 339,
+     LET = 340,
+     STATIC = 341,
+     ENUM = 342,
+     AWAIT = 343,
+     TRUE_LITERAL = 344,
+     FALSE_LITERAL = 345,
+     NULL_LITERAL = 346,
+     TOK_VIRTUAL_SEMICOLON = 347,
+     UPOSTFIX = 348
    };
 #endif
 /* Tokens.  */
@@ -198,28 +200,30 @@
 #define IMPORT 322
 #define IN 323
 #define INSTANCEOF 324
-#define NEW 325
-#define RETURN 326
-#define SUPER 327
-#define SWITCH 328
-#define THIS 329
-#define THROW 330
-#define TRY 331
-#define TYPEOF 332
-#define VAR 333
-#define VOID 334
-#define WHILE 335
-#define WITH 336
-#define YIELD 337
-#define LET 338
-#define STATIC 339
-#define ENUM 340
-#define AWAIT 341
-#define TRUE_LITERAL 342
-#define FALSE_LITERAL 343
-#define NULL_LITERAL 344
-#define TOK_VIRTUAL_SEMICOLON 345
-#define UPOSTFIX 346
+#define FROM 325
+#define AS 326
+#define NEW 327
+#define RETURN 328
+#define SUPER 329
+#define SWITCH 330
+#define THIS 331
+#define THROW 332
+#define TRY 333
+#define TYPEOF 334
+#define VAR 335
+#define VOID 336
+#define WHILE 337
+#define WITH 338
+#define YIELD 339
+#define LET 340
+#define STATIC 341
+#define ENUM 342
+#define AWAIT 343
+#define TRUE_LITERAL 344
+#define FALSE_LITERAL 345
+#define NULL_LITERAL 346
+#define TOK_VIRTUAL_SEMICOLON 347
+#define UPOSTFIX 348
 
 
 
@@ -233,7 +237,7 @@ typedef union YYSTYPE
     NodeList *list;
 }
 /* Line 1529 of yacc.c.  */
-#line 237 "build/parser.tab.h"
+#line 241 "build/parser.tab.h"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1

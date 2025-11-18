@@ -32,6 +32,10 @@ typedef enum {
     NODE_CLASS_DECLARATION,
     NODE_CLASS_BODY,
     NODE_METHOD_DEFINITION,
+    NODE_IMPORT_DECLARATION,
+    NODE_IMPORT_SPECIFIER,
+    NODE_EXPORT_DECLARATION,
+    NODE_EXPORT_SPECIFIER,
     NODE_SUPER,
     NODE_EXPRESSION_STATEMENT,
     NODE_RETURN_STATEMENT,
@@ -254,6 +258,34 @@ typedef struct ASTNode {
             bool is_static;
         } method_def;
 
+        // NODE_IMPORT_DECLARATION
+        struct {
+            struct ASTNode *source; // 模块路径 (String Literal)
+            NodeList *specifiers;   // 导入说明符列表 (ImportSpecifier)
+        } import_decl;
+
+        // NODE_IMPORT_SPECIFIER
+        struct {
+            struct ASTNode *imported; // 导出名 (Identifier, 对于默认导入为 NULL)
+            struct ASTNode *local;    // 本地名 (Identifier)
+            bool is_default;          // 是否为默认导入 (import x from ...)
+            bool is_namespace;        // 是否为命名空间导入 (import * as x from ...)
+        } import_spec;
+
+        // NODE_EXPORT_DECLARATION
+        struct {
+            struct ASTNode *declaration; // 导出的声明 (VariableDeclaration, FunctionDeclaration 等)
+            NodeList *specifiers;        // 导出说明符列表 (ExportSpecifier, 仅当 declaration 为 NULL 时)
+            struct ASTNode *source;      // 重新导出源 (export ... from "...", 可选)
+            bool is_default;             // 是否为默认导出 (export default ...)
+        } export_decl;
+
+        // NODE_EXPORT_SPECIFIER
+        struct {
+            struct ASTNode *local;    // 本地名 (Identifier)
+            struct ASTNode *exported; // 导出名 (Identifier)
+        } export_spec;
+
         // NODE_SUPER (无子节点)
         struct {} super_expr;
 
@@ -343,6 +375,10 @@ ASTNode* create_function_expression(ASTNode *id, NodeList *params, ASTNode *body
 ASTNode* create_class_declaration(ASTNode *id, ASTNode *superClass, ASTNode *body);
 ASTNode* create_class_body(NodeList *methods);
 ASTNode* create_method_definition(ASTNode *key, ASTNode *value, bool is_static);
+ASTNode* create_import_declaration(ASTNode *source, NodeList *specifiers);
+ASTNode* create_import_specifier(ASTNode *imported, ASTNode *local, bool is_default, bool is_namespace);
+ASTNode* create_export_declaration(ASTNode *declaration, NodeList *specifiers, ASTNode *source, bool is_default);
+ASTNode* create_export_specifier(ASTNode *local, ASTNode *exported);
 ASTNode* create_super_node(void);
 ASTNode* create_expression_statement(ASTNode *expression);
 ASTNode* create_return_statement(ASTNode *argument);
