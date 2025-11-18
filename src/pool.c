@@ -59,6 +59,17 @@ char* pool_strdup(const char* str) {
     return new_str;
 }
 
+char* pool_strndup(const char* str, size_t len) {
+    char *new_str = (char*)pool_alloc(len + 1);
+    if (new_str == NULL) {
+        // 内存分配失败
+        return NULL;
+    }
+    memcpy(new_str, str, len);
+    new_str[len] = '\0'; // 确保字符串以 null 结尾
+    return new_str;
+}
+
 void pool_free_all(void) {
     PoolBlock *curr = head;
     while (curr) {

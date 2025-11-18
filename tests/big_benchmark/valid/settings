@@ -1,1 +1,0 @@
-define(["require","blue/settings"],(function(e){"use strict";return e("blue/settings")}));

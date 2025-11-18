@@ -4,30 +4,42 @@
 #include "parser.tab.h"
 #include "common.h"
 #include "pool.h" 
+
 extern ParserState *scanner;
-//列表创建函数
+
+// 列表创建函数
 NodeList* nodelist_create(void) {
+    // NodeList 及其 nodes 数组本身仍然使用 malloc/realloc。
+    // 它们将在 pool_free_all() 之后由操作系统回收。
     NodeList *list = (NodeList*)malloc(sizeof(NodeList));
-    if (!list) {
-        yyerror(NULL, scanner, "Out of memory");
-        exit(1);
-    }
+    if (!list) exit(1);
     list->size = 0;
-    list->capacity = 4; // 初始容量为 4
+    list->capacity = 4; 
     list->nodes = (ASTNode**)malloc(list->capacity * sizeof(ASTNode*));
-    if (!list->nodes) {
-        yyerror(NULL, scanner, "Out of memory");
-        exit(1);
-    }
+    if (!list->nodes) exit(1);
     return list;
 }
-// 内部辅助函数：创建一个基础节点
+
+void nodelist_append(NodeList* list, ASTNode* node) {
+    if (list->size >= list->capacity) {
+        list->capacity *= 2;
+        list->nodes = (ASTNode**)realloc(list->nodes, list->capacity * sizeof(ASTNode*));
+        if (!list->nodes) exit(1);
+    }
+    list->nodes[list->size++] = node;
+}
+
+// 内部辅助函数：创建一个基础节点 (使用内存池)
 static ASTNode* create_base_node(NodeType type) {
     ASTNode *node = (ASTNode*)pool_alloc(sizeof(ASTNode));
     node->type = type;
     node->next = NULL;
+    // 可以在这里统一处理行号（如果 state->line 可访问）
+    // node->line = state->line;
     return node;
 }
+
+// --- 节点创建函数 ---
 
 ASTNode* create_script_node(NodeList *body) {
     ASTNode *node = create_base_node(NODE_SCRIPT);
@@ -35,10 +47,8 @@ ASTNode* create_script_node(NodeList *body) {
     return node;
 }
 
-// --- 节点创建函数 ---
 ASTNode* create_block_statement(NodeList *body) {
     ASTNode *block = create_base_node(NODE_BLOCK_STATEMENT);
-    // 直接将 NodeList 赋值给 body 属性
     block->data.script.body = body;
     return block;
 }
@@ -46,7 +56,7 @@ ASTNode* create_block_statement(NodeList *body) {
 ASTNode* create_declaration_list(DeclarationType type, NodeList *declarations) {
     ASTNode *list = create_base_node(NODE_VARIABLE_DECLARATION);
     list->data.var_decl.decl_type = type;
-    list->data.var_decl.declarations = declarations; // <-- 新逻辑
+    list->data.var_decl.declarations = declarations;
     return list;
 }
 
@@ -59,7 +69,7 @@ ASTNode* create_variable_declarator(ASTNode *id, ASTNode *init) {
 
 ASTNode* create_identifier_node(char *name) {
     ASTNode *node = create_base_node(NODE_IDENTIFIER);
-    node->data.identifier.name = name; // strndup 已经在 lexer.re 中完成
+    node->data.identifier.name = name;
     return node;
 }
 
@@ -105,14 +115,29 @@ ASTNode* create_for_statement(ASTNode *init, ASTNode *test, ASTNode *update, AST
     return node;
 }
 
-ASTNode* create_break_statement(void) {
-    ASTNode *node = create_base_node(NODE_BREAK_STATEMENT);
+ASTNode* create_for_in_statement(ASTNode *left, ASTNode *right, ASTNode *body) {
+    ASTNode *node = create_base_node(NODE_FOR_IN_STATEMENT);
+    node->data.for_in_stmt.left = left;
+    node->data.for_in_stmt.right = right;
+    node->data.for_in_stmt.body = body;
     return node;
 }
 
-ASTNode* create_continue_statement(void) {
-    ASTNode *node = create_base_node(NODE_CONTINUE_STATEMENT);
+ASTNode* create_for_of_statement(ASTNode *left, ASTNode *right, ASTNode *body, bool await) {
+    ASTNode *node = create_base_node(NODE_FOR_OF_STATEMENT);
+    node->data.for_of_stmt.left = left;
+    node->data.for_of_stmt.right = right;
+    node->data.for_of_stmt.body = body;
+    node->data.for_of_stmt.await = await;
     return node;
+}
+
+ASTNode* create_break_statement(void) {
+    return create_base_node(NODE_BREAK_STATEMENT);
+}
+
+ASTNode* create_continue_statement(void) {
+    return create_base_node(NODE_CONTINUE_STATEMENT);
 }
 
 ASTNode* create_switch_statement(ASTNode* discriminant, NodeList* cases) {
@@ -140,7 +165,7 @@ ASTNode* create_conditional_expression(ASTNode *test, ASTNode *consequent, ASTNo
 ASTNode* create_new_expression(ASTNode *callee, NodeList *arguments) {
     ASTNode *node = create_base_node(NODE_NEW_EXPRESSION);
     node->data.new_expr.callee = callee;
-    node->data.new_expr.arguments = arguments; // arguments 是一个 NodeList*
+    node->data.new_expr.arguments = arguments;
     return node;
 }
 
@@ -218,9 +243,8 @@ ASTNode* create_method_definition(ASTNode *key, ASTNode *value, bool is_static) 
     ASTNode *node = create_base_node(NODE_METHOD_DEFINITION);
     node->data.method_def.key = key;
     node->data.method_def.value = value;
-    node->data.method_def.is_static = is_static; // <-- 使用传入的参数
-
-    // 自动推断 'kind'
+    node->data.method_def.is_static = is_static;
+    
     if (key->type == NODE_IDENTIFIER && strcmp(key->data.identifier.name, "constructor") == 0) {
         node->data.method_def.kind = KIND_CONSTRUCTOR;
     } else {
@@ -262,8 +286,7 @@ ASTNode* create_export_specifier(ASTNode *local, ASTNode *exported) {
 }
 
 ASTNode* create_super_node(void) {
-    ASTNode *node = create_base_node(NODE_SUPER);
-    return node;
+    return create_base_node(NODE_SUPER);
 }
 
 ASTNode* create_expression_statement(ASTNode *expression) {
@@ -302,7 +325,6 @@ ASTNode* create_assignment_expr(BinaryOpType op, ASTNode *left, ASTNode *right) 
     return node;
 }
 
-// 注意：我扩展了此 API 以处理前缀/后缀
 ASTNode* create_unary_expr(UnaryOpType op, ASTNode *argument, bool prefix) {
     ASTNode *node = create_base_node(NODE_UNARY_EXPRESSION);
     node->data.unary_expr.op = op;
@@ -314,7 +336,7 @@ ASTNode* create_unary_expr(UnaryOpType op, ASTNode *argument, bool prefix) {
 ASTNode* create_call_expression(ASTNode *callee, NodeList *arguments) {
     ASTNode *node = create_base_node(NODE_CALL_EXPRESSION);
     node->data.call_expr.callee = callee;
-    node->data.call_expr.arguments = arguments; // 这是一个 NODE_ARGUMENT_LIST
+    node->data.call_expr.arguments = arguments;
     return node;
 }
 
@@ -326,201 +348,18 @@ ASTNode* create_member_access(ASTNode *object, ASTNode *property, bool computed)
     return node;
 }
 
-// 列表操作
-void nodelist_append(NodeList* list, ASTNode* node) {
-    if (list->size >= list->capacity) {
-        // 数组已满，容量加倍
-        list->capacity *= 2;
-        list->nodes = (ASTNode**)realloc(list->nodes, list->capacity * sizeof(ASTNode*));
-        if (!list->nodes) {
-            yyerror(NULL, scanner, "Out of memory");
-            exit(1);
-        }
-    }
-    list->nodes[list->size++] = node;
-}
-
-// ASI 辅助函数 (来自 4.3 节)
+/* --- 内存管理 (已移除) --- */
+/*
 void nodelist_free(NodeList* list) {
-    if (!list) return;
-    for (int i = 0; i < list->size; i++) {
-        // 递归释放列表中的每个节点
-        free_ast(list->nodes[i]);
-    }
-    // 释放指针数组本身
-    free(list->nodes);
-    // 释放列表结构体
-    free(list);
+    // [已移除]
 }
 
-// 内存管理
 void free_ast(ASTNode *node) {
-    if (!node) return;
-
-    switch (node->type) {
-        case NODE_SCRIPT:
-        case NODE_BLOCK_STATEMENT:
-            nodelist_free(node->data.script.body);
-            break;
-        case NODE_VARIABLE_DECLARATION:
-            nodelist_free(node->data.var_decl.declarations);
-            break;
-        case NODE_VARIABLE_DECLARATOR:
-            free_ast(node->data.var_declarator.id);
-            free_ast(node->data.var_declarator.init);
-            break;
-        case NODE_IDENTIFIER:
-            free(node->data.identifier.name);
-            break;
-        case NODE_LITERAL:
-            free(node->data.literal.value);
-            break;
-        case NODE_IF_STATEMENT:
-            free_ast(node->data.if_stmt.test);
-            free_ast(node->data.if_stmt.consequent);
-            free_ast(node->data.if_stmt.alternate);
-            break;
-        case NODE_WHILE_STATEMENT:
-            free_ast(node->data.while_stmt.test);
-            free_ast(node->data.while_stmt.body);
-            break;
-        case NODE_DO_WHILE_STATEMENT:
-            free_ast(node->data.do_while_stmt.body);
-            free_ast(node->data.do_while_stmt.test);
-            break;
-        case NODE_FOR_STATEMENT:
-            free_ast(node->data.for_stmt.init);
-            free_ast(node->data.for_stmt.test);
-            free_ast(node->data.for_stmt.update);
-            free_ast(node->data.for_stmt.body);
-            break;
-        case NODE_BREAK_STATEMENT:
-            break;
-        case NODE_CONTINUE_STATEMENT:
-            break;
-        case NODE_SWITCH_STATEMENT:
-            free_ast(node->data.switch_stmt.discriminant);
-            nodelist_free(node->data.switch_stmt.cases);
-            break;
-        case NODE_SWITCH_CASE:
-            free_ast(node->data.switch_case.test); // test 可能为 NULL, free_ast 会处理
-            nodelist_free(node->data.switch_case.consequent);
-            break;
-        case NODE_CONDITIONAL_EXPRESSION:
-            free_ast(node->data.conditional_expr.test);
-            free_ast(node->data.conditional_expr.consequent);
-            free_ast(node->data.conditional_expr.alternate);
-            break;
-        case NODE_NEW_EXPRESSION:
-            free_ast(node->data.new_expr.callee);
-            nodelist_free(node->data.new_expr.arguments); // nodelist_free 会处理 NULL
-            break;
-        case NODE_TRY_STATEMENT:
-            free_ast(node->data.try_stmt.block);
-            free_ast(node->data.try_stmt.handler);
-            free_ast(node->data.try_stmt.finalizer);
-            break;
-        case NODE_CATCH_CLAUSE:
-            free_ast(node->data.catch_clause.param);
-            free_ast(node->data.catch_clause.body);
-            break;
-        case NODE_THROW_STATEMENT:
-            free_ast(node->data.throw_stmt.argument);
-            break;
-        case NODE_OBJECT_EXPRESSION:
-            nodelist_free(node->data.object_expr.properties);
-            break;
-        case NODE_PROPERTY:
-            free_ast(node->data.property.key);
-            free_ast(node->data.property.value);
-            break;
-        case NODE_ARRAY_EXPRESSION:
-            nodelist_free(node->data.array_expr.elements);
-            break;
-        case NODE_ARROW_FUNCTION_EXPRESSION:
-            nodelist_free(node->data.arrow_func_expr.params);
-            free_ast(node->data.arrow_func_expr.body);
-            break;
-        case NODE_FUNCTION_EXPRESSION:
-            free_ast(node->data.func_expr.id); // free_ast 会处理 NULL
-            nodelist_free(node->data.func_expr.params);
-            free_ast(node->data.func_expr.body);
-            break;
-        case NODE_EXPRESSION_STATEMENT:
-            free_ast(node->data.expr_stmt.expression);
-            break;
-        case NODE_RETURN_STATEMENT:
-            free_ast(node->data.return_stmt.argument);
-            break;
-        case NODE_FUNCTION_DECLARATION:
-            free_ast(node->data.func_decl.id);
-            nodelist_free(node->data.func_decl.params);
-            free_ast(node->data.func_decl.body);
-        break;
-        case NODE_CLASS_DECLARATION:
-            free_ast(node->data.class_decl.id);
-            free_ast(node->data.class_decl.superClass);
-            free_ast(node->data.class_decl.body);
-            break;
-        case NODE_CLASS_BODY:
-            nodelist_free(node->data.class_body.body);
-            break;
-        case NODE_METHOD_DEFINITION:
-            free_ast(node->data.method_def.key);
-            free_ast(node->data.method_def.value);
-            break;
-        case NODE_IMPORT_DECLARATION:
-            free_ast(node->data.import_decl.source);
-            nodelist_free(node->data.import_decl.specifiers);
-            break;
-        case NODE_IMPORT_SPECIFIER:
-            free_ast(node->data.import_spec.imported);
-            free_ast(node->data.import_spec.local);
-            break;
-        case NODE_EXPORT_DECLARATION:
-            free_ast(node->data.export_decl.declaration);
-            nodelist_free(node->data.export_decl.specifiers);
-            free_ast(node->data.export_decl.source);
-            break;
-        case NODE_EXPORT_SPECIFIER:
-            free_ast(node->data.export_spec.local);
-            free_ast(node->data.export_spec.exported);
-            break;
-        case NODE_SUPER:
-            break; // 无子节点
-        case NODE_BINARY_EXPRESSION:
-            free_ast(node->data.binary_expr.left);
-            free_ast(node->data.binary_expr.right);
-            break;
-        case NODE_ASSIGNMENT_EXPRESSION:
-            free_ast(node->data.assignment_expr.left);
-            free_ast(node->data.assignment_expr.right);
-            break;
-        case NODE_UNARY_EXPRESSION:
-            free_ast(node->data.unary_expr.argument);
-            break;
-        case NODE_CALL_EXPRESSION:
-            free_ast(node->data.call_expr.callee);
-            nodelist_free(node->data.call_expr.arguments);
-            break;
-        case NODE_MEMBER_EXPRESSION:
-            free_ast(node->data.member_expr.object);
-            free_ast(node->data.member_expr.property);
-            break;
-        case NODE_THIS_EXPRESSION:
-            break;
-        default:
-            // 未知节点类型
-            break;
-    }
-
-    // 递归释放兄弟节点
-    free_ast(node->next);
-    // 最后释放自己
-    free(node);
+    // [已移除]
 }
+*/
 
-// --- 调试：打印 AST ---
+/* --- 调试：打印 AST --- */
 static void print_indent(int indent) {
     for (int i = 0; i < indent; i++) printf("  ");
 }
@@ -528,7 +367,7 @@ static void print_indent(int indent) {
 static void nodelist_print(NodeList* list, int indent) {
     if (!list || list->size == 0) {
         print_indent(indent);
-        printf("[] (empty)\n"); // ESTree uses [] for arrays
+        printf("[]\n");
         return;
     }
 
@@ -558,9 +397,9 @@ static const char* bin_op_to_str(BinaryOpType op) {
         case OP_PLUS: return "+";
         case OP_MINUS: return "-";
         case OP_MUL: return "*";
-        case OP_DIV: return "/";      // <--- [新增]
-        case OP_MOD: return "%";      // 顺便确认下 MOD 是否存在
-        case OP_POWER: return "**";   // 顺便确认下 POWER 是否存在
+        case OP_DIV: return "/";
+        case OP_MOD: return "%";
+        case OP_POWER: return "**";
         case OP_COMMA: return ",";
         case OP_ASSIGN: return "=";
         case OP_EQ: return "==";
@@ -592,8 +431,8 @@ static const char* un_op_to_str(UnaryOpType op) {
         case OP_TYPEOF: return "typeof";
         case OP_INC: return "++";
         case OP_DEC: return "--";
-        case OP_POST_INC: return "++"; // 打印是一样的
-        case OP_POST_DEC: return "--"; // 打印是一样的
+        case OP_POST_INC: return "++";
+        case OP_POST_DEC: return "--";
         case OP_NOT: return "!";
         case OP_BIT_NOT: return "~";
         case OP_UNARY_PLUS: return "+";
@@ -621,7 +460,7 @@ void print_ast(ASTNode *node, int indent) {
             print_indent(indent + 1); printf("body:\n"); nodelist_print(node->data.script.body, indent + 1);
             break;
         case NODE_VARIABLE_DECLARATION:
-            printf("VariableDeclaration (%s)\n", node->data.var_decl.decl_type == DECL_LET ? "let" : "const");
+            printf("VariableDeclaration (%s)\n", node->data.var_decl.decl_type == DECL_LET ? "let" : (node->data.var_decl.decl_type == DECL_CONST ? "const" : "var"));
             print_indent(indent + 1); printf("declarations:\n"); nodelist_print(node->data.var_decl.declarations, indent + 1);
             break;
         case NODE_VARIABLE_DECLARATOR:
@@ -651,6 +490,49 @@ void print_ast(ASTNode *node, int indent) {
             print_indent(indent + 1); printf("alternate:\n");
             print_ast(node->data.if_stmt.alternate, indent + 2);
             break;
+        case NODE_WHILE_STATEMENT:
+            printf("WhileStatement\n");
+            print_indent(indent + 1); printf("test:\n");
+            print_ast(node->data.while_stmt.test, indent + 2);
+            print_indent(indent + 1); printf("body:\n");
+            print_ast(node->data.while_stmt.body, indent + 2);
+            break;
+        case NODE_DO_WHILE_STATEMENT:
+            printf("DoWhileStatement\n");
+            print_indent(indent + 1); printf("body:\n");
+            print_ast(node->data.do_while_stmt.body, indent + 2);
+            print_indent(indent + 1); printf("test:\n");
+            print_ast(node->data.do_while_stmt.test, indent + 2);
+            break;
+        case NODE_FOR_STATEMENT:
+            printf("ForStatement\n");
+            print_indent(indent + 1); printf("init:\n");
+            print_ast(node->data.for_stmt.init, indent + 2);
+            print_indent(indent + 1); printf("test:\n");
+            print_ast(node->data.for_stmt.test, indent + 2);
+            print_indent(indent + 1); printf("update:\n");
+            print_ast(node->data.for_stmt.update, indent + 2);
+            print_indent(indent + 1); printf("body:\n");
+            print_ast(node->data.for_stmt.body, indent + 2);
+            break;
+        case NODE_FOR_IN_STATEMENT:
+            printf("ForInStatement\n");
+            print_indent(indent + 1); printf("left:\n");
+            print_ast(node->data.for_in_stmt.left, indent + 2);
+            print_indent(indent + 1); printf("right:\n");
+            print_ast(node->data.for_in_stmt.right, indent + 2);
+            print_indent(indent + 1); printf("body:\n");
+            print_ast(node->data.for_in_stmt.body, indent + 2);
+            break;
+        case NODE_FOR_OF_STATEMENT:
+            printf("ForOfStatement (await: %s)\n", node->data.for_of_stmt.await ? "true" : "false");
+            print_indent(indent + 1); printf("left:\n");
+            print_ast(node->data.for_of_stmt.left, indent + 2);
+            print_indent(indent + 1); printf("right:\n");
+            print_ast(node->data.for_of_stmt.right, indent + 2);
+            print_indent(indent + 1); printf("body:\n");
+            print_ast(node->data.for_of_stmt.body, indent + 2);
+            break;
         case NODE_BREAK_STATEMENT:
             printf("BreakStatement\n");
             break;
@@ -667,7 +549,7 @@ void print_ast(ASTNode *node, int indent) {
         case NODE_SWITCH_CASE:
             printf("SwitchCase\n");
             print_indent(indent + 1); printf("test:\n");
-            print_ast(node->data.switch_case.test, indent + 2); // test 为 NULL 时会打印 (null)
+            print_ast(node->data.switch_case.test, indent + 2);
             print_indent(indent + 1); printf("consequent:\n");
             nodelist_print(node->data.switch_case.consequent, indent + 1);
             break;
@@ -686,11 +568,9 @@ void print_ast(ASTNode *node, int indent) {
             print_ast(node->data.new_expr.callee, indent + 2);
             print_indent(indent + 1); printf("arguments:\n");
             if (node->data.new_expr.arguments) {
-                // new MyClass()
                 nodelist_print(node->data.new_expr.arguments, indent + 2);
             } else {
-                // new MyClass
-                print_indent(indent + 2); printf("[] (empty - no parens)\n");
+                print_indent(indent + 2); printf("[]\n");
             }
             break;
         case NODE_TRY_STATEMENT:
@@ -698,9 +578,9 @@ void print_ast(ASTNode *node, int indent) {
             print_indent(indent + 1); printf("block:\n");
             print_ast(node->data.try_stmt.block, indent + 2);
             print_indent(indent + 1); printf("handler:\n");
-            print_ast(node->data.try_stmt.handler, indent + 2); // handler 为 NULL 时会打印 (null)
+            print_ast(node->data.try_stmt.handler, indent + 2);
             print_indent(indent + 1); printf("finalizer:\n");
-            print_ast(node->data.try_stmt.finalizer, indent + 2); // finalizer 为 NULL 时会打印 (null)
+            print_ast(node->data.try_stmt.finalizer, indent + 2);
             break;
         case NODE_CATCH_CLAUSE:
             printf("CatchClause\n");
@@ -742,7 +622,7 @@ void print_ast(ASTNode *node, int indent) {
         case NODE_FUNCTION_EXPRESSION:
             printf("FunctionExpression\n");
             print_indent(indent + 1); printf("id:\n");
-            print_ast(node->data.func_expr.id, indent + 2); // id 为 NULL 时会打印 (null)
+            print_ast(node->data.func_expr.id, indent + 2);
             print_indent(indent + 1); printf("params:\n");
             nodelist_print(node->data.func_expr.params, indent + 2);
             print_indent(indent + 1); printf("body:\n");
@@ -824,31 +704,6 @@ void print_ast(ASTNode *node, int indent) {
         case NODE_SUPER:
             printf("SuperExpression\n");
             break;
-        case NODE_WHILE_STATEMENT:
-            printf("WhileStatement\n");
-            print_indent(indent + 1); printf("test:\n");
-            print_ast(node->data.while_stmt.test, indent + 2);
-            print_indent(indent + 1); printf("body:\n");
-            print_ast(node->data.while_stmt.body, indent + 2);
-            break;
-        case NODE_DO_WHILE_STATEMENT:
-            printf("DoWhileStatement\n");
-            print_indent(indent + 1); printf("body:\n");
-            print_ast(node->data.do_while_stmt.body, indent + 2);
-            print_indent(indent + 1); printf("test:\n");
-            print_ast(node->data.do_while_stmt.test, indent + 2);
-            break;
-        case NODE_FOR_STATEMENT:
-            printf("ForStatement\n");
-            print_indent(indent + 1); printf("init:\n");
-            print_ast(node->data.for_stmt.init, indent + 2);
-            print_indent(indent + 1); printf("test:\n");
-            print_ast(node->data.for_stmt.test, indent + 2);
-            print_indent(indent + 1); printf("update:\n");
-            print_ast(node->data.for_stmt.update, indent + 2);
-            print_indent(indent + 1); printf("body:\n");
-            print_ast(node->data.for_stmt.body, indent + 2);
-            break;
         case NODE_EXPRESSION_STATEMENT:
             printf("ExpressionStatement\n");
             print_ast(node->data.expr_stmt.expression, indent + 1);
@@ -883,16 +738,12 @@ void print_ast(ASTNode *node, int indent) {
             break;
         case NODE_UNARY_EXPRESSION:
         {
-            // 需要花括号来在 case 内部声明变量
             UnaryOpType op = node->data.unary_expr.op;
-
-            // ESTree 将 ++ 和 -- 称为 "UpdateExpression"
             if (op == OP_INC || op == OP_DEC || op == OP_POST_INC || op == OP_POST_DEC) {
                 printf("UpdateExpression (op: %s, prefix: %s)\n", 
                     un_op_to_str(op), 
                     node->data.unary_expr.prefix ? "true" : "false");
             } else {
-                // 其他所有一元操作符都是前缀
                 printf("UnaryExpression (op: %s, prefix: true)\n", un_op_to_str(op));
             }
             print_indent(indent + 1); printf("argument:\n");
@@ -917,7 +768,7 @@ void print_ast(ASTNode *node, int indent) {
             printf("UnknownNode (type: %d)\n", node->type);
     }
     
-    // 打印兄弟节点
+    // next 字段不再被递归 free，所以这个打印是安全的（如果它存在）
     if (node->next) {
         print_ast(node->next, indent);
     }

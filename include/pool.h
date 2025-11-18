@@ -15,4 +15,6 @@ char* pool_strdup(const char* str);
 // 释放所有内存池内存
 void pool_free_all(void);
 
+char* pool_strndup(const char* str, size_t len); 
+
 #endif

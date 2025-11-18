@@ -15,6 +15,8 @@ typedef enum {
     NODE_WHILE_STATEMENT,
     NODE_DO_WHILE_STATEMENT,
     NODE_FOR_STATEMENT,
+    NODE_FOR_IN_STATEMENT,    // [新增] for (x in y)
+    NODE_FOR_OF_STATEMENT,    // [新增] for (x of y)
     NODE_BREAK_STATEMENT,
     NODE_CONTINUE_STATEMENT,
     NODE_SWITCH_STATEMENT,
@@ -61,7 +63,7 @@ typedef enum {
     LITERAL_TRUE,
     LITERAL_FALSE,
     LITERAL_NULL,
-    LITERAL_REGEX
+    LITERAL_REGEX // [新增] 正则表达式
 } LiteralType;
 
 // 二元操作符
@@ -72,7 +74,8 @@ typedef enum {
     OP_LT, OP_LE, OP_GT, OP_GE, OP_IN, OP_INSTANCEOF,
     OP_LSHIFT, OP_RSHIFT, OP_URSHIFT,
     OP_PLUS, OP_MINUS,
-    OP_MUL, OP_MOD, OP_POWER, OP_DIV
+    OP_MUL, OP_MOD, OP_POWER,
+    OP_DIV // [新增] 除法
 } BinaryOpType;
 
 // 方法定义类型
@@ -159,6 +162,22 @@ typedef struct ASTNode {
             struct ASTNode *update;   // 可以是 Expression 或 NULL
             struct ASTNode *body;
         } for_stmt;
+
+        // [新增] NODE_FOR_IN_STATEMENT
+        struct {
+            struct ASTNode *left;  // 变量声明 或 LHS 表达式
+            struct ASTNode *right; // 对象表达式
+            struct ASTNode *body;
+        } for_in_stmt;
+
+        // [新增] NODE_FOR_OF_STATEMENT
+        struct {
+            struct ASTNode *left;
+            struct ASTNode *right;
+            struct ASTNode *body;
+            bool await; // for await ( ... )
+        } for_of_stmt;
+
 
         // NODE_BREAK_STATEMENT (无子节点)
         struct {} break_stmt;
@@ -359,6 +378,10 @@ ASTNode* create_if_statement(ASTNode *test, ASTNode *consequent, ASTNode *altern
 ASTNode* create_while_statement(ASTNode *test, ASTNode *body);
 ASTNode* create_do_while_statement(ASTNode *body, ASTNode *test);
 ASTNode* create_for_statement(ASTNode *init, ASTNode *test, ASTNode *update, ASTNode *body);
+// [新增]
+ASTNode* create_for_in_statement(ASTNode *left, ASTNode *right, ASTNode *body);
+ASTNode* create_for_of_statement(ASTNode *left, ASTNode *right, ASTNode *body, bool await);
+
 ASTNode* create_break_statement(void);
 ASTNode* create_continue_statement(void);
 ASTNode* create_switch_statement(ASTNode* discriminant, NodeList* cases);
@@ -390,14 +413,8 @@ ASTNode* create_unary_expr(UnaryOpType op, ASTNode *argument, bool prefix); // �
 ASTNode* create_call_expression(ASTNode *callee, NodeList *arguments);
 ASTNode* create_member_access(ASTNode *object, ASTNode *property, bool computed);
 
-// ASI 辅助函数
+// 列表操作
 NodeList* nodelist_create(void);
 void nodelist_append(NodeList* list, ASTNode* node);
-void nodelist_free(NodeList* list); // 释放列表及其中的所有节点
-
-// 内存管理
-void free_ast(ASTNode *node);
-
-// 调试
 void print_ast(ASTNode *node, int indent);
 #endif // AST_H
